@@ -142,16 +142,14 @@ def compute_fv_representations(tracklets_path, clusters_path, intermediates_path
                 # (in a global representation)
                 node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
                 tmp = d[node_inds[0]:node_inds[-1],:]
-                v_node = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])  # fisher vec
-                tree_global[parent_idx] = v_node
+                tree_global[parent_idx] = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])  # fisher vec
 
                 # (in a per-frame representation)
                 fids = np.unique(obj[node_inds[0]:node_inds[-1],0])
-                V_node = np.zeros((len(fids),len(v)), dtype=np.float32)
+                tree_perframe[parent_idx] = np.zeros((len(fids),len(v)), dtype=np.float32)
                 for k, f in enumerate(fids):
                     tmp = d[np.where(obj[node_inds[0]:node_inds[-1],0] == f)[0],:]
-                    V_node[k,:] = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])
-                tree_perframe[parent_idx] = V_node
+                    tree_perframe[parent_idx][k,:] = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])
 
             # save to disk both FV representations
             output_filepath = feats_path + 'fishervecs/' + feat_t + '/' + videonames[i] + '.pkl'

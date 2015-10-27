@@ -26,7 +26,7 @@ def linearSVR(X, c_param, norm=2):
 
     T = X.shape[0] # temporal length
     clf = LinearSVR(C=c_param, dual=False, loss='squared_epsilon_insensitive', \
-                    epsilon=0.1, tol=0.001, max_iter=-1, verbose=False)
+                    epsilon=0.1, tol=0.001, max_iter=-1, verbose=False)  # epsilon is "-p" in C's liblinear and tol is "-e"
     clf.fit(XX, np.linspace(1,T,T))
 
     return clf.coef_
