@@ -44,11 +44,11 @@ def extract(fullvideonames, videonames, st, num_videos, tracklets_path):
     # prepare output directories
     if not exists('tmpfiles/'):
         makedirs('tmpfiles/')
+    if not exists(tracklets_path):
+        makedirs(tracklets_path)
     for feat_t in INTERNAL_PARAMETERS['nfeats'].keys():
         if not exists(tracklets_path + feat_t + '/'):
             makedirs(tracklets_path + feat_t + '/')
-    if not exists(tracklets_path):
-        makedirs(tracklets_path)
 
     # process the videos
     total = len(fullvideonames)

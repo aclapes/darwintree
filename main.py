@@ -272,7 +272,7 @@ if __name__ == "__main__":
     INSTANCE_TOTAL = 5  # TODO: change to "len(videonames)"
 
     tracklet_extraction.extract(fullvideonames, videonames, INSTANCE_ST, INSTANCE_TOTAL, tracklets_path)
-    # tracklet_clustering.cluster(tracklets_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, clusters_path)
+    tracklet_clustering.cluster(tracklets_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, clusters_path)
 
     train_indx, test_indx = train_test_indx
 
