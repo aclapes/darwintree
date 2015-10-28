@@ -108,18 +108,18 @@ def filter_low_density(data, k=30, r=5):
     # each tracklet's mean x and y position
     P = data[:,[INTERNAL_PARAMETERS['indices']['meanx'],INTERNAL_PARAMETERS['indices']['meany']]]  # (these are index 1 and 2 of data)
 
-    start_time = time.time()
     all_sparsities = np.zeros((P.shape[0],k), dtype=np.float32)
-    subset_indices = []
-    start_time = time.time()
-    for i in range(0, 1000):  # TODO: change 1000 by "P.shape[0]
-        tmp = np.where((data[:,0] >= data[i,0] - r) & (data[:,0] <= data[i,0] + r))[0]
-        if len(subset_indices) == 1:
+    subset_indices = []  # optimization. see (*) below
+    for i in range(0, P.shape[0]):
+        new_subset_indices = np.where((data[:,0] >= data[i,0] - r) & (data[:,0] <= data[i,0] + r))[0]
+        if len(new_subset_indices) == 1:
             all_sparsities[i,:] = np.nan
         else:
-            if not np.array_equal(tmp, subset_indices):
-                subset_indices = tmp
+            # (*) a new KDTree is constructed only if the subset of data changes
+            if not np.array_equal(new_subset_indices, subset_indices):
+                subset_indices = new_subset_indices
                 tree = KDTree(P[subset_indices,:], leaf_size=1e3)
+
             if k+1 <= len(subset_indices):
                 dists, inds = tree.query(P[i,:],k=k+1)
                 dists = dists[0,1:]  # asked the neighbors of only 1 instance, returned in dists as 0-th element
@@ -127,7 +127,6 @@ def filter_low_density(data, k=30, r=5):
                 dists, inds = tree.query(P[i,:],k=len(subset_indices))
                 dists = np.concatenate([dists[0,1:], [np.nan]*(k-len(dists[0,1:]))])
             all_sparsities[i,:] = dists
-    print "It took:", time.time() - start_time, "secs."
 
     local_sparsities = np.nanmean(all_sparsities, axis=1)
     mean_sparsity = np.nanmean(all_sparsities)
