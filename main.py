@@ -276,12 +276,9 @@ if __name__ == "__main__":
 
     train_indx, test_indx = train_test_indx
 
-    tracklet_representation.train_reduction_maps_and_gmms(tracklets_path, \
-                                                          videonames[train_indx], INSTANCE_ST, INSTANCE_TOTAL, \
-                                                          intermediates_path)
-    tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, \
-                                                       videonames, INSTANCE_ST, INSTANCE_TOTAL, \
-                                                       feats_path)
+    tracklet_representation.train_reduction_maps_and_gmms(tracklets_path, videonames, train_indx, intermediates_path)
+    tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
+                                                       INSTANCE_ST, INSTANCE_TOTAL, feats_path)
 
     quit()  # TODO: remove this for further processing
 

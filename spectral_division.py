@@ -258,11 +258,11 @@ def spd_pinv(a, rcond=1e-10, square_root=False, check_stability=True):
     N, _N = a.shape
     assert N == _N, "Matrix is not square!"
     # get the eigen-decomposition
-    w, v = np.linalg.eigh(a)
-    # v, w, u = np.linalg.svd(a)
-    # sort_index = np.argsort(w)
-    # w = w[sort_index]
-    # v = v[:,sort_index]
+    # w, v = np.linalg.eigh(a)
+    v, w, u = np.linalg.svd(a)
+    sort_index = np.argsort(w)
+    w = w[sort_index]
+    v = v[:,sort_index]
     # check positive-definiteness
     ev_min = w.min()
     if ev_min <= 0:

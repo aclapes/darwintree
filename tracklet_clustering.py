@@ -4,6 +4,7 @@ from os.path import isfile, exists
 from os import makedirs
 import cPickle
 import random
+import time
 
 import numpy as np
 from sklearn.metrics import pairwise
@@ -32,6 +33,8 @@ def cluster(tracklets_path, videonames, st, num_videos, clusters_path, visualize
         if isfile(clusters_path + videonames[i] + '.pkl'):
             print('%s -> OK' % videonames[i])
             continue
+
+        start_time = time.time()
 
         with open(tracklets_path + 'obj/' + videonames[i] + '.pkl', 'rb') as f:
             data_obj = cPickle.load(f)
@@ -65,6 +68,9 @@ def cluster(tracklets_path, videonames, st, num_videos, clusters_path, visualize
 
         with open(clusters_path + videonames[i] + '.pkl', 'wb') as f:
             cPickle.dump({'best_labels' : best_labels, 'int_paths' : int_paths}, f)
+
+        elapsed_time = time.time() - start_time
+        print('%s -> DONE in %.2f secs.' % (videonames[i], elapsed_time))
 
         if visualize:
             n_paths = len(np.unique(int_paths))

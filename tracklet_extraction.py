@@ -79,7 +79,7 @@ def extract(fullvideonames, videonames, st, num_videos, tracklets_path):
                 cPickle.dump(data[inliers, feats_beginend[feat_t][0]:feats_beginend[feat_t][1]], f)
 
         elapsed_time = time.time() - start_time
-        print('%s -> DONE in %.2f secs.' % (fullvideonames[i], elapsed_time))
+        print('%s -> DONE in %.2f secs.' % (videonames[i], elapsed_time))
 
 
 # ==============================================================================

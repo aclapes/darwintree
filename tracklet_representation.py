@@ -5,8 +5,9 @@ from os.path import isfile, exists
 from os import makedirs
 import cPickle
 from sklearn.decomposition import PCA
-from scipy.io import loadmat
-from yael import yael, ynumpy
+from yael import ynumpy
+import time
+import sys
 
 from Queue import PriorityQueue
 
@@ -20,12 +21,12 @@ INTERNAL_PARAMETERS = dict(
     fv_repr_feats = ['mu','sigma']
 )
 
-def train_reduction_maps_and_gmms(tracklets_path, videonames, st, num_videos, intermediates_path):
+def train_reduction_maps_and_gmms(tracklets_path, videonames, train_inds, intermediates_path):
     if not exists(intermediates_path):
         makedirs(intermediates_path)
 
-    total = len(videonames)
-    num_samples_per_vid = int(INTERNAL_PARAMETERS['n_samples'] / float(min(st+num_videos,total)))
+    total = len(train_inds)
+    num_samples_per_vid = int(INTERNAL_PARAMETERS['n_samples'] / float(total))
 
     # process the videos
     for i, feat_t in enumerate(INTERNAL_PARAMETERS['feature_types']):
@@ -34,12 +35,23 @@ def train_reduction_maps_and_gmms(tracklets_path, videonames, st, num_videos, in
             print('%s -> OK' % filepath)
             continue
 
+        start_time = time.time()
+
         D = None  # feat_t's sampled tracklets
         ptr = 0
-        for j in range(st,min(st+num_videos,total)):
-            # load file containing tracklets
-            with open(tracklets_path + feat_t + '/' + videonames[j] + '.pkl', 'rb') as f:
+        for j in range(0, total):
+            idx = train_inds[j]
+
+            filepath = tracklets_path + feat_t + '/' + videonames[idx] + '.pkl'
+            if not isfile(filepath):
+                sys.stderr.write('# WARNING: missing training instance'
+                                 ' {}\n'.format(filepath))
+                sys.stderr.flush()
+                continue
+
+            with open(filepath, 'rb') as f:
                 d = cPickle.load(f)
+
             # init sample
             if D is None:
                 D = np.zeros((INTERNAL_PARAMETERS['n_samples'], d.shape[1]), dtype=np.float32)
@@ -70,6 +82,8 @@ def train_reduction_maps_and_gmms(tracklets_path, videonames, st, num_videos, in
         with open(intermediates_path + 'fv-gmm_pca-' + feat_t + '.pkl', 'wb') as f:
             cPickle.dump(dict(pca=pca, gmm=gmm), f)
 
+        elapsed_time = time.time() - start_time
+        print('%s -> DONE in %.2f secs.' % (feat_t, elapsed_time))
 
 def compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, st, num_videos, feats_path):
     '''
@@ -101,7 +115,10 @@ def compute_fv_representations(tracklets_path, clusters_path, intermediates_path
         # FV computed for all feature types? see the last in INTERNAL_PARAMETERS['feature_types']
         output_filepath = feats_path + 'fishervecs/' + INTERNAL_PARAMETERS['feature_types'][-1] + '/' + videonames[i] + '.pkl'
         if isfile(output_filepath):
+            print('%s -> OK' % output_filepath)
             continue
+
+        start_time = time.time()
 
         # object features used for the per-frame FV representation computation (cach'd)
         with open(tracklets_path + 'obj/' + videonames[i] + '.pkl', 'rb') as f:
@@ -156,9 +173,8 @@ def compute_fv_representations(tracklets_path, clusters_path, intermediates_path
             with open(output_filepath, 'wb') as f:
                 cPickle.dump(dict(v=v, V=V, tree_global=tree_global, tree_perframe=tree_perframe), f)
 
-    print 'done'
-    return
-
+        elapsed_time = time.time() - start_time
+        print('%s -> DONE in %.2f secs.' % (videonames[i], elapsed_time))
 
 
 
