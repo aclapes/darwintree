@@ -7,30 +7,38 @@ Copyrights: Albert Clap\'{e}s, 2015
 '''
 
 import numpy as np
-from scipy.io import loadmat, savemat
-from os.path import isfile, exists, join, splitext
+from os.path import isfile, isdir, exists, join, splitext
 from os import listdir
 from os import makedirs
+
+from scipy.io import loadmat, savemat
+
 from sklearn import svm
 from sklearn.metrics import accuracy_score, average_precision_score
 
 import tracklet_extraction, tracklet_clustering, tracklet_representation
 from videodarwin import darwin, rootSIFT, normalizeL2
 
+
 # change depending on the computer
 INTERNAL_PARAMETERS = dict(
     home_path = '/Volumes/MacintoshHD/Users/aclapes/',
     datasets_path = 'Datasets/',
-    dataset_name = 'HighFive',  #'HighFive',
-    data_path = 'Data/darwintree/'
+    data_path = 'Data/darwintree/',
+    # TODO: change MANUALLY the name of dataset
+    dataset_name = 'ucf_sports_actions'  #Hollywood2, highfive, ucf_sports_actions
 )
 
-def get_global_config():
+
+def set_global_config():
     '''
 
     :return:
     '''
     parent_path = INTERNAL_PARAMETERS['home_path'] + INTERNAL_PARAMETERS['data_path'] + INTERNAL_PARAMETERS['dataset_name'] + '/'
+    if not isdir(parent_path):
+        makedirs(parent_path)
+
     tracklets_path = parent_path + 'tracklets/'
     clusters_path = parent_path + 'clusters/'
     intermediates_path = parent_path + 'intermediates/'
@@ -40,7 +48,18 @@ def get_global_config():
     return tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path
 
 
-def get_hollywood2_config():
+def set_dataset_config(dataset_name):
+    if dataset_name == 'Hollywood2':
+        config = set_hollywood2_config()
+    elif dataset_name == 'highfive':
+        config = set_highfive_config()
+    elif dataset_name == 'ucf_sports_actions':
+        config = set_ucfsportsaction_dataset()
+
+    return config
+
+
+def set_hollywood2_config():
     '''
     Hard-codes some paths and configuration values.
     :return:
@@ -64,7 +83,8 @@ def get_hollywood2_config():
 
     return fullvideonames, videonames, class_labels, action_names, train_test_indx
 
-def get_highfive_config():
+
+def set_highfive_config():
     '''
     Hard-codes some paths and configuration values.
     :return:
@@ -75,6 +95,7 @@ def get_highfive_config():
 
     # Half train/test partition got from:
     # http://www.robots.ox.ac.uk/~alonso/tv_human_interactions.html
+    # ----------------------------------------------------
     train_test = dict(
         train_inds = dict(
             handShake = [2,14,15,16,18,19,20,21,24,25,26,27,28,32,40,41,42,43,44,45,46,47,48,49,50],
@@ -91,6 +112,7 @@ def get_highfive_config():
             negative = np.linspace(51,100,50,dtype=np.int32)
         )
     )
+    # ----------------------------------------------------
 
     action_names = sorted(train_test['train_inds'].keys(), key=lambda x: x)
 
@@ -112,6 +134,69 @@ def get_highfive_config():
     class_labels = (-1) * np.ones((len(int_inds),len(action_names)),dtype=np.int32)
     for i in xrange(len(action_names)):
         class_labels[np.array(int_inds)==i,i] = 1
+
+    return fullvideonames, videonames, class_labels, action_names, tuple(train_test_indx)
+
+
+def set_ucfsportsaction_dataset():
+    parent_path = INTERNAL_PARAMETERS['home_path'] + INTERNAL_PARAMETERS['datasets_path'] + INTERNAL_PARAMETERS['dataset_name'] + '/'
+    videos_dir = parent_path
+
+    # From the publication webpage, some hard-coded metainfo.
+    # http://crcv.ucf.edu/data/UCF_Sports_Action.php
+    # ----------------------------------------------------
+    action_classes = {
+        'Diving' : 14,
+        'Golf Swing' : 18,
+        'Kicking' : 20,
+        'Lifting' : 6,
+        'Riding Horse' : 12,
+        'Running' : 13,
+        'SkateBoarding' : 12,
+        'Swing-Bench' : 20,
+        'Swing-Side' : 13,
+        'Walking' : 22
+    }
+
+    train_inds = [5,6,7,8,9,10,11,12,13,14,21,22,23,24,25,26,27,28,29,30,31,32,39,40,41,42,43,44,45,46,47,48,49,50, \
+                  51,52,55,56,57,58,63,64,65,66,67,68,69,70,75,76,77,78,79,80,81,82,83,88,89,90,91,92,93,94,95,102, \
+                  103,104,105,106,107,108,109,110,111,112,113,114,115,120,121,122,123,124,125,126,127,128,136,137,  \
+                  138,139,140,141,142,143,144,145,146,147,148,149,150]
+    test_inds = [1,2,3,4,15,16,17,18,19,20,33,34,35,36,37,38,53,54,59,60,61,62,71,72,73,74,84,85,86,87,96,97,98,99, \
+                 100,101,116,117,118,119,129,130,131,132,133,134,135]
+
+    # ----------------------------------------------------
+
+    # This dataset was quite a mess. So I used a re-organized version of it. READ carefully.
+    #
+    # These dataset provides both .avi videos and .jpg image files most of times. However, I FOUND PROBLEMS:
+    # (1) Video were missing (Diving action, instances in folders: 008-014),
+    # (2) Video was shorter than the sequence of JPGs (ex: Diving action, instance 006).
+    #
+    # Therefore, I generated new videos from JPGs when available, or copying the existing video otherwise. The
+    # generation of videos was done with ffmpeg. For more info please refer to the provided "fix_ucf_sports_dataset.py".
+    # It prepares the dataset to be parsed with the following code:
+
+    videonames = []
+    for i, element in enumerate(listdir(videos_dir)):
+        stem = splitext(element)
+        if stem[1] == '.avi':
+            videonames.append(stem[0])
+
+    fullvideonames = [videos_dir + videoname for videoname in videonames]
+
+    action_names = sorted(action_classes.keys(), key = lambda x : x)
+
+    int_inds = []
+    for i, name in enumerate(action_names):
+        int_inds += [i] * action_classes[name]
+
+    # create a matrix #{instances}x#{classes}, where entries are all "-1" except for 1s in corresponding class columns
+    class_labels = (-1) * np.ones((len(int_inds),len(action_names)),dtype=np.int32)
+    for i in xrange(len(action_names)):
+        class_labels[np.array(int_inds)==i,i] = 1
+
+    train_test_indx = (np.array(train_inds) - 1, np.array(test_inds) - 1)
 
     return fullvideonames, videonames, class_labels, action_names, tuple(train_test_indx)
 
@@ -178,17 +263,13 @@ def train_and_classify(K_tr, K_te, train_labels, test_labels):
     return acc, ap
 
 if __name__ == "__main__":
-    # load configuration (computation node-dependent)
-    tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path = get_global_config()
-    # load dataset configuration (if prepared)
-    if INTERNAL_PARAMETERS['dataset_name'] == 'Hollywood2':
-        fullvideonames, videonames, class_labels, action_names, train_test_indx = get_hollywood2_config()
-    elif INTERNAL_PARAMETERS['dataset_name'] == 'HighFive':
-        fullvideonames, videonames, class_labels, action_names, train_test_indx = get_highfive_config()
+    tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path = set_global_config()
+    # load dataset configuration (check README.md, DATASETS section)
+    fullvideonames, videonames, class_labels, action_names, train_test_indx = set_dataset_config(INTERNAL_PARAMETERS['dataset_name'])
 
     # Change some values if wanna compute a subset of data (instances or classes)
     INSTANCE_ST = 0
-    INSTANCE_TOTAL = 5  #len(videonames)
+    INSTANCE_TOTAL = 5  # TODO: change to "len(videonames)"
 
     tracklet_extraction.extract(fullvideonames, videonames, INSTANCE_ST, INSTANCE_TOTAL, tracklets_path)
     # tracklet_clustering.cluster(tracklets_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, clusters_path)
@@ -201,7 +282,8 @@ if __name__ == "__main__":
     tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, \
                                                        videonames, INSTANCE_ST, INSTANCE_TOTAL, \
                                                        feats_path)
-    quit()
+
+    quit()  # TODO: remove this for further processing
 
     # Get the videodarwin representation
     channels = ['trj']  # channels = ['trj', 'hog', 'hof', 'mbh']
