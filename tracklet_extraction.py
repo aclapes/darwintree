@@ -132,7 +132,6 @@ def filter_low_density(data, k=30, r=5):
     mean_sparsity = np.nanmean(all_sparsities)
     stddev_sparsity = np.nanstd(all_sparsities)
     inliers = np.where(local_sparsities <= (mean_sparsity + stddev_sparsity))[0]
-    elapsed_time = time.time() - start_time
-    print "Time in filter_low_density():", elapsed_time
+
     return inliers
 
