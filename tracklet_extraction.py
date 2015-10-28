@@ -8,6 +8,8 @@ import cPickle
 from os.path import isfile, exists
 from os import makedirs
 import fileinput
+from spectral_division import build_geom_neighbor_graph
+import pyflann
 
 # some hard-coded constants
 FEATURE_EXTRACTOR_RELPATH = 'release/'
@@ -108,12 +110,16 @@ def filter_low_density(data, k=30, r=5):
 
     start_time = time.time()
     all_sparsities = np.zeros((P.shape[0],k), dtype=np.float32)
-    for i in range(0, P.shape[0]):
-        subset_indices = np.where((data[:,0] >= data[i,0] - r) & (data[:,0] <= data[i,0] + r))[0]
+    subset_indices = []
+    start_time = time.time()
+    for i in range(0, 1000):  # TODO: change 1000 by "P.shape[0]
+        tmp = np.where((data[:,0] >= data[i,0] - r) & (data[:,0] <= data[i,0] + r))[0]
         if len(subset_indices) == 1:
             all_sparsities[i,:] = np.nan
         else:
-            tree = KDTree(P[subset_indices,:], leaf_size=20)
+            if not np.array_equal(tmp, subset_indices):
+                subset_indices = tmp
+                tree = KDTree(P[subset_indices,:], leaf_size=1e3)
             if k+1 <= len(subset_indices):
                 dists, inds = tree.query(P[i,:],k=k+1)
                 dists = dists[0,1:]  # asked the neighbors of only 1 instance, returned in dists as 0-th element
@@ -121,6 +127,7 @@ def filter_low_density(data, k=30, r=5):
                 dists, inds = tree.query(P[i,:],k=len(subset_indices))
                 dists = np.concatenate([dists[0,1:], [np.nan]*(k-len(dists[0,1:]))])
             all_sparsities[i,:] = dists
+    print "It took:", time.time() - start_time, "secs."
 
     local_sparsities = np.nanmean(all_sparsities, axis=1)
     mean_sparsity = np.nanmean(all_sparsities)
