@@ -64,3 +64,11 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# Office
+*.xlsx
+*.xls
+*.doc
+*.docx
+*.ppt
+*.pptx
