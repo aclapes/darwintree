@@ -29,7 +29,7 @@ INTERNAL_PARAMETERS = dict(
     )
 )
 
-def extract(fullvideonames, videonames, st, num_videos, tracklets_path):
+def extract(fullvideonames, videonames, st, num_videos, feat_types, tracklets_path):
     L = INTERNAL_PARAMETERS['L']
     # establish the features and their dimensions' start-end
     feats_beginend = {'obj' : (0,               \
@@ -48,7 +48,7 @@ def extract(fullvideonames, videonames, st, num_videos, tracklets_path):
         makedirs('tmpfiles/')
     if not exists(tracklets_path):
         makedirs(tracklets_path)
-    for feat_t in INTERNAL_PARAMETERS['nfeats'].keys():
+    for feat_t in feats_beginend.keys():
         if not exists(tracklets_path + feat_t + '/'):
             makedirs(tracklets_path + feat_t + '/')
 
@@ -74,12 +74,12 @@ def extract(fullvideonames, videonames, st, num_videos, tracklets_path):
         inliers = filter_low_density(data)
 
         # store feature types separately
-        for feat_t in INTERNAL_PARAMETERS['nfeats'].keys():
+        for feat_t in feats_beginend.keys():
             with open(tracklets_path + feat_t + '/' + videonames[i] + '.pkl','wb') as f:
                 cPickle.dump(data[inliers, feats_beginend[feat_t][0]:feats_beginend[feat_t][1]], f)
 
         elapsed_time = time.time() - start_time
-        print('%s -> DONE in %.2f secs.' % (videonames[i], elapsed_time))
+        print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
 
 # ==============================================================================

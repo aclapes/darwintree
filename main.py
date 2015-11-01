@@ -1,3 +1,5 @@
+#!/Users/Shared/anaconda/bin/python
+
 '''Framework for action/activity recognition on videos (computer vision research work)
 
 LICENSE: BSD
@@ -6,6 +8,7 @@ Copyrights: Albert Clap\'{e}s, 2015
 
 '''
 
+import sys
 import numpy as np
 from os.path import isfile, isdir, exists, join, splitext
 from os import listdir
@@ -17,7 +20,9 @@ from sklearn import svm
 from sklearn.metrics import accuracy_score, average_precision_score
 
 import tracklet_extraction, tracklet_clustering, tracklet_representation
-from videodarwin import darwin, rootSIFT, normalizeL2
+import classification
+import darwintree
+# from videodarwin import darwin, normalizeL2
 
 
 # change depending on the computer
@@ -26,8 +31,13 @@ INTERNAL_PARAMETERS = dict(
     datasets_path = 'Datasets/',
     data_path = 'Data/darwintree/',
     # TODO: change MANUALLY the name of dataset
-    dataset_name = 'ucf_sports_actions'  #Hollywood2, highfive, ucf_sports_actions
+    dataset_name = 'highfive',  #Hollywood2, highfive, ucf_sports_actions
+    feature_types = ['mbh']  #['trj', 'hof', 'hog', 'mbh']
 )
+
+# ==============================================================================
+# Helper functions
+# ==============================================================================
 
 
 def set_global_config():
@@ -135,6 +145,8 @@ def set_highfive_config():
     for i in xrange(len(action_names)):
         class_labels[np.array(int_inds)==i,i] = 1
 
+    class_labels = class_labels[:,np.where(np.array(action_names) != 'negative')[0]]
+
     return fullvideonames, videonames, class_labels, action_names, tuple(train_test_indx)
 
 
@@ -201,46 +213,46 @@ def set_ucfsportsaction_dataset():
     return fullvideonames, videonames, class_labels, action_names, tuple(train_test_indx)
 
 
-def get_videodarwin_representation(feat_t, feat_channel, darwin_t, feats_path, videonames, st, num_videos, darwins_path):
-    """
-    Computes the videodarwin representation for a (sub)set of videos,
-    given a feature type.
-    :param feat_t:
-    :param feat_channel:
-    :param darwin_t:
-    :param feats_dir:
-    :param videonames:
-    :param st:
-    :param num_videos:
-    :param darwins_dir:
-    :return:
-    """
-
-    c_param = 1
-    repr_folder_name = 'representation_' + feat_t + '_' + feat_channel + '_' + darwin_t
-
-    # create output directory structure if needed
-    if not exists(darwins_path + repr_folder_name):
-        if not exists(darwins_path):
-            makedirs(darwins_path)
-        makedirs(darwins_path + repr_folder_name)
-
-    U = []
-    total = len(videonames)
-    for i in range(st,min(st+num_videos,total)):
-        darwin_file_path = darwins_path + repr_folder_name + '/' + str(i) + '-Cval' + str(c_param) + '.mat'
-        if isfile(darwin_file_path):
-            u = loadmat(darwin_file_path)['u'][0]
-        else:
-            feats_file_path = feats_path + feat_channel + '/' + videonames[i] + '-' + feat_t + '.mat'
-            histv = loadmat(feats_file_path)['histv']
-            u = darwin(histv, c_svm_param=c_param)
-            savemat(darwin_file_path, {'u':u})
-
-        print("%s -> OK" % darwin_file_path)
-        U.append(u)
-
-    return np.matrix(U)
+# def get_videodarwin_representation(feat_t, feat_channel, darwin_t, feats_path, videonames, st, num_videos, darwins_path):
+#     """
+#     Computes the videodarwin representation for a (sub)set of videos,
+#     given a feature type.
+#     :param feat_t:
+#     :param feat_channel:
+#     :param darwin_t:
+#     :param feats_dir:
+#     :param videonames:
+#     :param st:
+#     :param num_videos:
+#     :param darwins_dir:
+#     :return:
+#     """
+#
+#     c_param = 1
+#     repr_folder_name = 'representation_' + feat_t + '_' + feat_channel + '_' + darwin_t
+#
+#     # create output directory structure if needed
+#     if not exists(darwins_path + repr_folder_name):
+#         if not exists(darwins_path):
+#             makedirs(darwins_path)
+#         makedirs(darwins_path + repr_folder_name)
+#
+#     U = []
+#     total = len(videonames)
+#     for i in range(st,min(st+num_videos,total)):
+#         darwin_file_path = darwins_path + repr_folder_name + '/' + str(i) + '-Cval' + str(c_param) + '.mat'
+#         if isfile(darwin_file_path):
+#             u = loadmat(darwin_file_path)['u'][0]
+#         else:
+#             feats_file_path = feats_path + feat_channel + '/' + videonames[i] + '-' + feat_t + '.mat'
+#             histv = loadmat(feats_file_path)['histv']
+#             u = darwin(histv, c_svm_param=c_param)
+#             savemat(darwin_file_path, {'u':u})
+#
+#         print("%s -> OK" % darwin_file_path)
+#         U.append(u)
+#
+#     return np.matrix(U)
 
 def train_and_classify(K_tr, K_te, train_labels, test_labels):
     # one_to_n = np.linspace(1,K_tr.shape[0],K_tr.shape[0])
@@ -262,81 +274,120 @@ def train_and_classify(K_tr, K_te, train_labels, test_labels):
 
     return acc, ap
 
+
+
+# ==============================================================================
+# Main
+# ==============================================================================
+
+
 if __name__ == "__main__":
     tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path = set_global_config()
     # load dataset configuration (check README.md, DATASETS section)
     fullvideonames, videonames, class_labels, action_names, train_test_indx = set_dataset_config(INTERNAL_PARAMETERS['dataset_name'])
 
     # Change some values if wanna compute a subset of data (instances or classes)
-    INSTANCE_ST = 0
-    INSTANCE_TOTAL = 5  # TODO: change to "len(videonames)"
 
-    tracklet_extraction.extract(fullvideonames, videonames, INSTANCE_ST, INSTANCE_TOTAL, tracklets_path)
+    if len(sys.argv) < 2:
+        INSTANCE_ST = 0
+        INSTANCE_TOTAL = len(videonames)
+    elif len(sys.argv) < 4:
+        INSTANCE_ST = int(sys.argv[1])
+        if INSTANCE_ST > len(videonames) - 1:
+            INSTANCE_ST = len(videonames) - 1
+
+        INSTANCE_TOTAL = int(sys.argv[2])
+        if INSTANCE_ST + int(sys.argv[2]) > len(videonames):
+            INSTANCE_TOTAL = len(videonames) - INSTANCE_ST
+
+    print('INSTANCE_ST: %d, INSTANCE_TOTAL: %d' % (INSTANCE_ST, INSTANCE_TOTAL))
+
+    tracklet_extraction.extract(fullvideonames, videonames, INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], tracklets_path)
     tracklet_clustering.cluster(tracklets_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, clusters_path)
+
+    quit()
 
     train_indx, test_indx = train_test_indx
 
-    tracklet_representation.train_reduction_maps_and_gmms(tracklets_path, videonames, train_indx, intermediates_path)
-    tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
-                                                       INSTANCE_ST, INSTANCE_TOTAL, feats_path)
+    # tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, train_indx, INTERNAL_PARAMETERS['feature_types'], intermediates_path)
+    # tracklet_representation.train_fv_gmms(tracklets_path, videonames, train_indx, INTERNAL_PARAMETERS['feature_types'], intermediates_path)
+
+    # tracklet_representation.compute_bovw_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
+    #                                                      INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
+    # tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
+    #                                                    INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
+
+    # tracklet_representation.compute_bovwtree_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
+    #                                                          INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
+    # tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
+    #                                                    INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
+
+    results = classification.classify_using_bovwtrees(feats_path, videonames, class_labels, train_test_indx, INTERNAL_PARAMETERS['feature_types'])
+
+    print("ACTION_NAME AC mAP")
+    for i in xrange(class_labels.shape[1]):
+        print("%s %.2f %.2f" % (INTERNAL_PARAMETERS['action_names'][i], results['acc_classes'][i], results['ap_classes'][i]))
+    print("%.2f %.2f" % (np.mean(results['acc_classes']), np.mean(results['ap_classes'])))
+
+    # darwintree.darwin(fullfeatnames, INSTANCE_ST, INSTANCE_TOTAL, darwins_path)
 
     quit()  # TODO: remove this for further processing
 
-    # Get the videodarwin representation
-    channels = ['trj']  # channels = ['trj', 'hog', 'hof', 'mbh']
-
-    U = dict()  # darwin of different channels
-    for ch in channels:
-        U_ch = get_videodarwin_representation('fv', ch, 'lin', feats_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, darwins_path)
-        U[ch] = U_ch
-
-    # Classification
-    CLASS_ST = 0
-    CLASS_TOTAL = len(INTERNAL_PARAMETERS['action_names'])  # want to use a subset of classes?
-
-    class_labels = class_labels[:,CLASS_ST:CLASS_ST+CLASS_TOTAL]
-    indices = np.any(class_labels == 1, axis=1)
-    n_train = len(train_indx)
-    n_test = len(test_indx)
-    train_indx = train_indx[indices[0:n_train]]
-    test_indx = test_indx[indices[n_train:(n_train+n_test)]]
-
-    # Normalization of different channels
-    for ch in channels:
-        U[ch] = normalizeL2(U[ch])
-
-    # Kernel computation
-    kernels_tr = []
-    kernels_te = []
-    for i, ch in enumerate(channels):
-        X_tr_ch = U[ch][train_indx,:]
-        X_te_ch = U[ch][test_indx,:]
-        kernels_tr.append( np.dot(X_tr_ch, X_tr_ch.T) )
-        kernels_te.append( np.dot(X_te_ch, X_tr_ch.T) )
-
-    # Assign weights to channels
-    if not 'weights' in locals(): # if not specified a priori (when channels' specification)
-        weights = [1.0/len(channels) for i in channels]
-
-    # Perform the classification
-    acc_classes = []
-    ap_classes = []
-    for cl in range(CLASS_ST,CLASS_ST+CLASS_TOTAL):
-        train_labels = class_labels[train_indx, cl]
-        test_labels = class_labels[test_indx, cl]
-        # Weight each channel accordingly
-        K_tr = weights[0] * kernels_tr[0]
-        K_te = weights[0] * kernels_te[0]
-        for i in range(1,len(channels)):
-            K_tr += weights[i] * kernels_tr[i]
-            K_te += weights[i] * kernels_te[i]
-        # Get class results
-        acc, ap = train_and_classify(K_tr, K_te, train_labels, test_labels)
-        acc_classes.append(acc)
-        ap_classes.append(ap)
-
-    # Get global results
-    print("ACTION_NAME AC mAP")
-    for i in xrange(class_labels.shape[1]):
-        print("%s %.2f %.2f" % (INTERNAL_PARAMETERS['action_names'][i], acc_classes[i], ap_classes[i]))
-    print("%.2f %.2f" % (np.mean(acc_classes), np.mean(ap_classes)))
+    # # Get the videodarwin representation
+    # channels = ['trj']  # channels = ['trj', 'hog', 'hof', 'mbh']
+    #
+    # U = dict()  # darwin of different channels
+    # for ch in channels:
+    #     U_ch = get_videodarwin_representation('fv', ch, 'lin', feats_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, darwins_path)
+    #     U[ch] = U_ch
+    #
+    # # Classification
+    # CLASS_ST = 0
+    # CLASS_TOTAL = len(INTERNAL_PARAMETERS['action_names'])  # want to use a subset of classes?
+    #
+    # class_labels = class_labels[:,CLASS_ST:CLASS_ST+CLASS_TOTAL]
+    # indices = np.any(class_labels == 1, axis=1)
+    # n_train = len(train_indx)
+    # n_test = len(test_indx)
+    # train_indx = train_indx[indices[0:n_train]]
+    # test_indx = test_indx[indices[n_train:(n_train+n_test)]]
+    #
+    # # Normalization of different channels
+    # for ch in channels:
+    #     U[ch] = normalizeL2(U[ch])
+    #
+    # # Kernel computation
+    # kernels_tr = []
+    # kernels_te = []
+    # for i, ch in enumerate(channels):
+    #     X_tr_ch = U[ch][train_indx,:]
+    #     X_te_ch = U[ch][test_indx,:]
+    #     kernels_tr.append( np.dot(X_tr_ch, X_tr_ch.T) )
+    #     kernels_te.append( np.dot(X_te_ch, X_tr_ch.T) )
+    #
+    # # Assign weights to channels
+    # if not 'weights' in locals(): # if not specified a priori (when channels' specification)
+    #     weights = [1.0/len(channels) for i in channels]
+    #
+    # # Perform the classification
+    # acc_classes = []
+    # ap_classes = []
+    # for cl in range(CLASS_ST,CLASS_ST+CLASS_TOTAL):
+    #     train_labels = class_labels[train_indx, cl]
+    #     test_labels = class_labels[test_indx, cl]
+    #     # Weight each channel accordingly
+    #     K_tr = weights[0] * kernels_tr[0]
+    #     K_te = weights[0] * kernels_te[0]
+    #     for i in range(1,len(channels)):
+    #         K_tr += weights[i] * kernels_tr[i]
+    #         K_te += weights[i] * kernels_te[i]
+    #     # Get class results
+    #     acc, ap = train_and_classify(K_tr, K_te, train_labels, test_labels)
+    #     acc_classes.append(acc)
+    #     ap_classes.append(ap)
+    #
+    # # Get global results
+    # print("ACTION_NAME AC mAP")
+    # for i in xrange(class_labels.shape[1]):
+    #     print("%s %.2f %.2f" % (INTERNAL_PARAMETERS['action_names'][i], acc_classes[i], ap_classes[i]))
+    # print("%.2f %.2f" % (np.mean(acc_classes), np.mean(ap_classes)))

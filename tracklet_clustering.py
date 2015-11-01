@@ -5,6 +5,7 @@ from os import makedirs
 import cPickle
 import random
 import time
+from math import isnan
 
 import numpy as np
 from sklearn.metrics import pairwise
@@ -70,7 +71,7 @@ def cluster(tracklets_path, videonames, st, num_videos, clusters_path, visualize
             cPickle.dump({'best_labels' : best_labels, 'int_paths' : int_paths}, f)
 
         elapsed_time = time.time() - start_time
-        print('%s -> DONE in %.2f secs.' % (videonames[i], elapsed_time))
+        print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
         if visualize:
             n_paths = len(np.unique(int_paths))
@@ -120,9 +121,9 @@ def stratified_subsample_of_tracklets_in_grid(P, nx=3, ny=3, p=0.01):
             cell_inds = np.where((P[:,0] >= x_ran[0]) & (P[:,0] < x_ran[1]) & (P[:,1] >= y_ran[0]) & (P[:,1] < y_ran[1]))[0]
             m = len(cell_inds)
             random.seed(74)
-            sorted_inds = sorted(np.arange(m), key=lambda k: np.random.random())
-            insample.append(sorted_inds[:int(np.ceil(m*p_cell))])
-            outsample.append(sorted_inds[int(np.ceil(m*p_cell)):])
+            sorted_inds = sorted(np.arange(m, dtype=np.int32), key=lambda k: np.random.random())
+            insample.append(np.array(sorted_inds[:int(np.ceil(m*p_cell))], dtype=np.int32))
+            outsample.append(np.array(sorted_inds[int(np.ceil(m*p_cell)):], dtype=np.int32))
 
     return np.concatenate(insample), np.concatenate(outsample)
 
@@ -154,7 +155,7 @@ def multimodal_product_kernel(D, primary_inds=None, secondary_inds=None, medians
         median = np.nanmedian(S[S!=0])
         if len(medians) < len(channels):
             medians.append(median)
-        gamma = 1.0 / (2 * median)
+        gamma = 1.0 / (2 * median) if not isnan(median) and median != 0.0 else 0.0
         K = np.multiply(K, np.exp(-gamma * np.power(S,2))) # rbf kernel and element-wise multiplication
     return K, medians
 
