@@ -6,13 +6,20 @@ import cPickle
 import random
 import time
 from math import isnan
+import sys
 
 import numpy as np
 from sklearn.metrics import pairwise
+from sklearn.decomposition import PCA
 
-from spectral_division import spectral_embedding_nystrom, spectral_clustering_division
+from spectral_division import spectral_embedding_nystrom, spectral_clustering_division, reconstruct_tree_from_leafs, IndefiniteError, NumericalError
 
 import cv2
+
+INTERNAL_PARAMETERS = dict(
+    initial_ridge_value = 1e-10,
+    tries_per_ridge_value = 3
+)
 
 def cluster(tracklets_path, videonames, st, num_videos, clusters_path, visualize=False):
     """
@@ -47,42 +54,69 @@ def cluster(tracklets_path, videonames, st, num_videos, clusters_path, visualize
         for k in xrange(data_obj.shape[0]): # range(0,100):  #
             T = np.reshape(data_trj[k], (data_trj.shape[1]/2,2))  # trajectory features into matrix (time length x 2)
             D.setdefault('x',[]).append( T[1:,0] )  # x's offset + x's relative displacement
-            D.setdefault('y',[]).append( T[1:,1] ) #  y's offset + y's relative displacement
+            D.setdefault('y',[]).append( T[1:,1] )  #  y's offset + y's relative displacement
             D.setdefault('t',[]).append( data_obj[k,0] - np.linspace(T.shape[0]-1, 0, T.shape[0]) )
             D.setdefault('v_x',[]).append( T[1:,0] - T[:-1,0] )
             D.setdefault('v_y',[]).append( T[1:,1] - T[:-1,1] )
 
-        # (Sec. 2.3.1)
-        # A, B = get_tracklet_similarities(D, data_obj[:,7:9])
-        # create a subsample (n << N) stratified by a grid
-        insample, outsample = stratified_subsample_of_tracklets_in_grid(data_obj[:,7:9], p=0.01)  # given tracklets (ending) positions
-        # get the similarities of
-        A, medians = multimodal_product_kernel(D, insample, insample)  # (n), n << N tracklets
-        B, _ = multimodal_product_kernel(D, insample, outsample, medians=medians)  # (N - n) tracklets
-        # (Sec. 2.3.2 and 2.3.3)
-        E_ = spectral_embedding_nystrom(np.hstack((A,B)))
+        ret = False
+        ridge = INTERNAL_PARAMETERS['initial_ridge_value']
+        while not ret:
+            for i in xrange(INTERNAL_PARAMETERS['tries_per_ridge_value']):
+                try:
+                    # (Sec. 2.3.1)
+                    # A, B = get_tracklet_similarities(D, data_obj[:,7:9])
+                    # create a subsample (n << N) stratified by a grid
+                    insample, outsample = stratified_subsample_of_tracklets_in_grid(data_obj[:,7:9], p=0.01)  # given tracklets (ending) positions
+                    # get the similarities of
+                    A, medians = multimodal_product_kernel(D, insample, insample)  # (n), n << N tracklets
+                    B, _ = multimodal_product_kernel(D, insample, outsample, medians=medians)  # (N - n) tracklets
+                    # (Sec. 2.3.2 and 2.3.3)
+                    AB = np.hstack((A,B)).astype('float64')
+                    E_ = spectral_embedding_nystrom(AB, ridge=ridge)
+                    ret = True
+                    break
+                except IndefiniteError:
+                    pass
+                except NumericalError:
+                    pass
+
+            if not ret:
+                # warn the user
+                msg = "WARNING: increasing ridge, {0:.0e} -> {1:.0e}.\n"
+                sys.stderr.write(msg.format(ridge, ridge * 10))
+                sys.stderr.flush()
+                # increase the ridge value
+                ridge *= 10
+
+        # re-organize E rows according to in- and out-sample indices
         E = np.zeros(E_.shape, dtype=E_.dtype)
         E[insample,:] = E_[:len(insample),:]
         E[outsample,:] = E_[len(insample):,:]
-        # (Sec. 2.4)
-        best_labels, int_paths = spectral_clustering_division(E, data_obj[:,7:10], normalize_geoms=False)
 
-        with open(clusters_path + videonames[i] + '.pkl', 'wb') as f:
-            cPickle.dump({'best_labels' : best_labels, 'int_paths' : int_paths}, f)
+        # (Sec. 2.4)
+        best_labels, int_paths = spectral_clustering_division(E, data_obj[:,7:10])
+        tree = reconstruct_tree_from_leafs(np.unique(int_paths))
 
         elapsed_time = time.time() - start_time
         print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
-        if visualize:
-            n_paths = len(np.unique(int_paths))
-            print '#DEBUG n_labels:', n_paths
+        with open(clusters_path + videonames[i] + '.pkl', 'wb') as f:
+            cPickle.dump({'best_labels' : best_labels, 'int_paths' : int_paths, 'tree' : tree}, f)
 
-            xres = 528
-            yres = 224
+        # DEBUG
+        # -----
+        if visualize:
+            xres, yres = 528, 224
             A = np.zeros((yres,1280,3), dtype=np.uint8)
-            for l,p in enumerate(np.unique(int_paths)):
-                cluster_inds = np.where(int_paths == p)[0]
-                hue = (float(l)/n_paths + random.random()) % 1
+            n_unique_paths = len(np.unique(tree.keys()))
+
+            sorted_keys = sorted(tree.keys(), key=lambda x : x)
+            for i, key in enumerate(sorted_keys):
+                node = tree[key]
+                cluster_inds = np.concatenate([np.where(int_paths == i)[0] for i in node])
+
+                hue = ((float(i)/n_unique_paths) + random.random()) % 1
                 for k in xrange(0, len(cluster_inds)):
                     idx = cluster_inds[k]
                     T = np.reshape(data_trj[idx,:], (data_trj.shape[1]/2,2))
@@ -92,14 +126,16 @@ def cluster(tracklets_path, videonames, st, num_videos, clusters_path, visualize
                         pt2 = (int(T[j,0]*xres-xres/2+t*1280), int(T[j,1]*yres))
                         cv2.line(A, pt1, pt2, hsv_to_rgb((hue,0.5,0.8)), 1)
                     cv2.circle(A, pt2, 1, hsv_to_rgb((hue,0.5,1.0)), -1)
+
                 cv2.imshow("#DEBUG Clustering visualization", A)
+                print key, node
                 cv2.waitKey(0)
+        # -----
 
 
 # ==============================================================================
 # Helper functions
 # ==============================================================================
-
 
 def stratified_subsample_of_tracklets_in_grid(P, nx=3, ny=3, p=0.01):
     """
@@ -115,12 +151,11 @@ def stratified_subsample_of_tracklets_in_grid(P, nx=3, ny=3, p=0.01):
     insample = []
     outsample = []
     for i in range(0,ny):
+        y_ran = (i*(1.0/ny), (i+1)*(1.0/ny))
         for j in range(0,nx):
-            y_ran = (i*(1.0/ny), (i+1)*(1.0/ny))
             x_ran = (j*(1.0/nx), (j+1)*(1.0/nx))
             cell_inds = np.where((P[:,0] >= x_ran[0]) & (P[:,0] < x_ran[1]) & (P[:,1] >= y_ran[0]) & (P[:,1] < y_ran[1]))[0]
             m = len(cell_inds)
-            random.seed(74)
             sorted_inds = sorted(np.arange(m, dtype=np.int32), key=lambda k: np.random.random())
             insample.append(np.array(sorted_inds[:int(np.ceil(m*p_cell))], dtype=np.int32))
             outsample.append(np.array(sorted_inds[int(np.ceil(m*p_cell)):], dtype=np.int32))
@@ -151,32 +186,15 @@ def multimodal_product_kernel(D, primary_inds=None, secondary_inds=None, medians
         D[channel_t] = np.array(D[channel_t], dtype=np.float32)
         X_primary = D[channel_t][primary_inds] if primary_inds is not None else D[channel_t]
         X_secondary = D[channel_t][secondary_inds] if secondary_inds is not None else D[channel_t]
-        S = pairwise.euclidean_distances(X_primary, X_secondary)
+        S = pairwise.pairwise_distances(X=X_primary, Y=X_secondary, metric='euclidean')
         median = np.nanmedian(S[S!=0])
         if len(medians) < len(channels):
             medians.append(median)
-        gamma = 1.0 / (2 * median) if not isnan(median) and median != 0.0 else 0.0
-        K = np.multiply(K, np.exp(-gamma * np.power(S,2))) # rbf kernel and element-wise multiplication
+        gamma = 1.0/(2*median) if not isnan(median) and median != 0.0 else 0.0
+        K_tmp = np.exp(-gamma * np.power(S,2)) # rbf kernel and element-wise multiplication
+        K = np.multiply(K, K_tmp)
+
     return K, medians
-
-
-def get_tracklet_similarities(D, P):
-    """
-    Creates A and B.
-    :param D: dictionary of modalities, each modality is N-by-{#features}
-    :param P: matrix 2-by-N
-    :return A, B:
-    """
-    # create a subsample (n << N) stratified by a grid
-    insample, outsample = stratified_subsample_of_tracklets_in_grid(P, p=0.01)  # given tracklets (ending) positions
-    # get the similarities of
-    A, medians = multimodal_product_kernel(D, insample, insample)  # (n), n << N tracklets
-    B, _ = multimodal_product_kernel(D, insample, outsample, medians=medians)  # (N - n) tracklets
-
-    return A, B
-
-
-
 
 
 def hsv_to_rgb(hsv):

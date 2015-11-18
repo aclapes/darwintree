@@ -20,13 +20,12 @@ import sys
 import heapq
 
 import numpy as np
-from scipy import sparse, linalg
+from scipy import sparse
 from scipy.sparse.sparsetools import cs_graph_components
 
 import pyflann
 from sklearn.cluster import MiniBatchKMeans, KMeans
 
-import Queue
 
 # The fixed internal paramaters for clustering
 INTERNAL_PARAMETERS = dict(
@@ -97,7 +96,7 @@ def spectral_embedding_nystrom(AB, ridge=1e-10, nvec=2, copy=True):
     A[np.diag_indices_from(A)] += ridge
     # normalize the components of AB
     b_r = B.sum(axis=1)
-    pinvA = spd_pinv(A)
+    pinvA = spd_pinv(A, check_stability=False)
     d1 = A.sum(axis=1) + b_r
     d2 = np.abs(B.sum(axis=0) + np.dot(np.dot(b_r, pinvA), B))
     # Note: abs not required except when numerical problems
@@ -109,7 +108,7 @@ def spectral_embedding_nystrom(AB, ridge=1e-10, nvec=2, copy=True):
     A *= np.dot(dhat[:n], dhat[:n].T)
     B *= np.dot(dhat[:n], dhat[n:].T)
     # square root of the pseudo-inverse
-    Asi = spd_pinv(A, square_root=True)
+    Asi = spd_pinv(A, square_root=True, check_stability=False)
     # compute the embedding vectors
     AsiB = np.dot(Asi, B)  # XXX time & memory bottleneck (20% of total)
     S = A + np.dot(AsiB, AsiB.T)  # XXX bottleneck (20% of total)
@@ -145,7 +144,7 @@ def spectral_embedding_nystrom(AB, ridge=1e-10, nvec=2, copy=True):
     return E
 
 
-def spectral_clustering_division(E, geoms, split_type="threshold"):
+def spectral_clustering_division(E, geoms, split_type="threshold", normalize_geoms=True):
     """Divisive hierarchical clustering + model selection
 
     Recursively split in two by thresholding the eigenvectors in increasing
@@ -198,9 +197,12 @@ def spectral_clustering_division(E, geoms, split_type="threshold"):
         mts = n_mts
 
     # get the normalized spatio-temporal positions
-    # nrlz = np.array([640., 480., 1e2])
-    ngeoms = geoms.astype(np.float) #/ nrlz[np.newaxis, :]
-    ngeoms -= ngeoms.mean(axis=0)[np.newaxis, :]
+    if normalize_geoms:
+        nrlz = np.array([640., 480., 1e2])
+        ngeoms = geoms.astype(np.float) / nrlz[np.newaxis, :]
+        ngeoms -= ngeoms.mean(axis=0)[np.newaxis, :]
+    else:
+        ngeoms = geoms - geoms.mean(axis=0)[np.newaxis, :]
 
     # initialize the tree structure
     stree = SpectralTree(
@@ -210,52 +212,6 @@ def spectral_clustering_division(E, geoms, split_type="threshold"):
     stree.build()
 
     return stree.labels, stree.int_paths
-
-
-def reconstruct_tree_from_leafs(leafs):
-    """
-    Given a list of leaf, recover all the nodes.
-
-    Parameters
-    ----------
-    leafs:  Leafs are integers, each representing a path in the binary tree.
-            For instance, a leaf value of 5 indicates the leaf is the one
-            reached going throught the folliwing path: root-left-right.
-
-    Returns
-    -------
-    A dictionary indicating for each node a list of all its descendents.
-    Exemple:
-        { 1 : [2,3,4,5,6,7,12,13,26,27],
-          2 : [4,5],
-          3 : [6,7,12,13,26,27],
-          ...
-        }
-    """
-    h = dict()
-    q = Queue.PriorityQueue()
-
-    # recover first intermediate nodes (direct parents from leafs)
-    for path in leafs:
-        parent_path = int(path/2)
-        if not parent_path in h and parent_path > 1:
-            q.put(-parent_path)  # deeper nodes go first (queue reversed by "-")
-        h.setdefault(parent_path, []).append(path)
-
-    # recover other intermediates notes recursevily
-    while not q.empty():
-        path = -q.get()
-        parent_path = int(path/2)
-        if not parent_path in h and parent_path > 1:  # list parent also for further processing
-            q.put(-parent_path)
-
-        h.setdefault(parent_path, [])
-        h[parent_path] += ([path] + h[path])  # append children from current node to their parent
-
-    # update with leafs
-    h.update(dict((i,[i]) for i in leafs))
-
-    return h
 
 
 # ==============================================================================
@@ -302,8 +258,11 @@ def spd_pinv(a, rcond=1e-10, square_root=False, check_stability=True):
     N, _N = a.shape
     assert N == _N, "Matrix is not square!"
     # get the eigen-decomposition
-    w, v = np.linalg.eigh(a)
-
+    # w, v = np.linalg.eigh(a)
+    v, w, u = np.linalg.svd(a)
+    sort_index = np.argsort(w)
+    w = w[sort_index]
+    v = v[:,sort_index]
     # check positive-definiteness
     ev_min = w.min()
     if ev_min <= 0:

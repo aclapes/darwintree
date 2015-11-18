@@ -54,8 +54,9 @@ def set_global_config():
     intermediates_path = parent_path + 'intermediates/'
     feats_path = parent_path + 'feats/'
     darwins_path = parent_path + 'darwins/'
+    classification_path = parent_path + 'classification/'
 
-    return tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path
+    return tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path, classification_path
 
 
 def set_dataset_config(dataset_name):
@@ -282,7 +283,7 @@ def train_and_classify(K_tr, K_te, train_labels, test_labels):
 
 
 if __name__ == "__main__":
-    tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path = set_global_config()
+    tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path, classification_path = set_global_config()
     # load dataset configuration (check README.md, DATASETS section)
     fullvideonames, videonames, class_labels, action_names, train_test_indx = set_dataset_config(INTERNAL_PARAMETERS['dataset_name'])
 
@@ -303,35 +304,35 @@ if __name__ == "__main__":
     print('INSTANCE_ST: %d, INSTANCE_TOTAL: %d' % (INSTANCE_ST, INSTANCE_TOTAL))
 
     tracklet_extraction.extract(fullvideonames, videonames, INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], tracklets_path)
-    tracklet_clustering.cluster(tracklets_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, clusters_path)
-
-    quit()
+    tracklet_clustering.cluster(tracklets_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, clusters_path, visualize=False)
 
     train_indx, test_indx = train_test_indx
 
-    # tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, train_indx, INTERNAL_PARAMETERS['feature_types'], intermediates_path)
+    tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, train_indx, INTERNAL_PARAMETERS['feature_types'], intermediates_path)
     # tracklet_representation.train_fv_gmms(tracklets_path, videonames, train_indx, INTERNAL_PARAMETERS['feature_types'], intermediates_path)
+
 
     # tracklet_representation.compute_bovw_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
     #                                                      INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
     # tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
     #                                                    INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
 
-    # tracklet_representation.compute_bovwtree_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
-    #                                                          INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
+    tracklet_representation.compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, \
+                                                     INTERNAL_PARAMETERS['feature_types'], feats_path, \
+                                                     treelike=True, clusters_path=clusters_path)
     # tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
     #                                                    INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
 
-    results = classification.classify_using_bovwtrees(feats_path, videonames, class_labels, train_test_indx, INTERNAL_PARAMETERS['feature_types'])
+    results = classification.classify_using_bovwtrees(feats_path, videonames, class_labels, train_test_indx, INTERNAL_PARAMETERS['feature_types'], 1, classification_path)
 
     print("ACTION_NAME AC mAP")
     for i in xrange(class_labels.shape[1]):
-        print("%s %.2f %.2f" % (INTERNAL_PARAMETERS['action_names'][i], results['acc_classes'][i], results['ap_classes'][i]))
+        print("%s %.2f %.2f" % (action_names[i], results['acc_classes'][i], results['ap_classes'][i]))
     print("%.2f %.2f" % (np.mean(results['acc_classes']), np.mean(results['ap_classes'])))
 
-    # darwintree.darwin(fullfeatnames, INSTANCE_ST, INSTANCE_TOTAL, darwins_path)
-
     quit()  # TODO: remove this for further processing
+
+    # darwintree.darwin(fullfeatnames, INSTANCE_ST, INSTANCE_TOTAL, darwins_path)
 
     # # Get the videodarwin representation
     # channels = ['trj']  # channels = ['trj', 'hog', 'hof', 'mbh']
