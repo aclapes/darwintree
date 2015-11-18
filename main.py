@@ -306,6 +306,8 @@ if __name__ == "__main__":
     tracklet_extraction.extract(fullvideonames, videonames, INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], tracklets_path)
     tracklet_clustering.cluster(tracklets_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, clusters_path, visualize=False)
 
+    quit()
+
     train_indx, test_indx = train_test_indx
 
     tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, train_indx, INTERNAL_PARAMETERS['feature_types'], intermediates_path)

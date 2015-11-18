@@ -62,7 +62,7 @@ def cluster(tracklets_path, videonames, st, num_videos, clusters_path, visualize
         ret = False
         ridge = INTERNAL_PARAMETERS['initial_ridge_value']
         while not ret:
-            for i in xrange(INTERNAL_PARAMETERS['tries_per_ridge_value']):
+            for _ in xrange(INTERNAL_PARAMETERS['tries_per_ridge_value']):
                 try:
                     # (Sec. 2.3.1)
                     # A, B = get_tracklet_similarities(D, data_obj[:,7:9])
@@ -99,7 +99,7 @@ def cluster(tracklets_path, videonames, st, num_videos, clusters_path, visualize
         tree = reconstruct_tree_from_leafs(np.unique(int_paths))
 
         elapsed_time = time.time() - start_time
-        print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
+        print('%s -> DONE (in %.2f secs)' % (clusters_path + videonames[i] + '.pkl', elapsed_time))
 
         with open(clusters_path + videonames[i] + '.pkl', 'wb') as f:
             cPickle.dump({'best_labels' : best_labels, 'int_paths' : int_paths, 'tree' : tree}, f)
