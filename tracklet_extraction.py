@@ -76,7 +76,7 @@ def extract(fullvideonames, videonames, st, num_videos, feat_types, tracklets_pa
         # store feature types separately
         for feat_t in feats_beginend.keys():
             with open(tracklets_path + feat_t + '/' + videonames[i] + '.pkl','wb') as f:
-                cPickle.dump(data[inliers, feats_beginend[feat_t][0]:feats_beginend[feat_t][1]], f)
+                cPickle.dump(data[:, feats_beginend[feat_t][0]:feats_beginend[feat_t][1]], f)  # TODO: : -> inliners
 
         elapsed_time = time.time() - start_time
         print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
@@ -121,7 +121,7 @@ def filter_low_density(data, k=30, r=5):
                 tree = KDTree(P[subset_indices,:], leaf_size=1e3)
 
             if k+1 <= len(subset_indices):
-                dists, inds = tree.query(P[i,:],k=k+1)
+                dists, inds = tree.query(P[i,:].reshape(1,-1),k=k+1)
                 dists = dists[0,1:]  # asked the neighbors of only 1 instance, returned in dists as 0-th element
             else:  #len(subset_indices) > 1:
                 dists, inds = tree.query(P[i,:],k=len(subset_indices))

@@ -12,6 +12,7 @@ import sys
 
 from Queue import PriorityQueue
 
+
 INTERNAL_PARAMETERS = dict(
     # dimensionality reduction
     n_samples = 1000000,  # TODO: set to 1000000
@@ -24,69 +25,72 @@ INTERNAL_PARAMETERS = dict(
     fv_repr_feats = ['mu','sigma']
 )
 
-def train_bovw_codebooks(tracklets_path, videonames, train_inds, feat_types, intermediates_path, pca_reduction=True):
+def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=False):
     if not exists(intermediates_path):
         makedirs(intermediates_path)
 
-    total = len(train_inds)
-    num_samples_per_vid = int(INTERNAL_PARAMETERS['n_samples'] / float(total))
+    for k, part in enumerate(traintest_parts):
+        train_inds = np.where(part <= 0)[0]  # train codebook for each possible training parition
+        total = len(train_inds)
+        num_samples_per_vid = int(INTERNAL_PARAMETERS['n_samples'] / float(total))
 
-    # process the videos
-    for i, feat_t in enumerate(feat_types):
-        output_filepath = intermediates_path + 'bovw' + ('_pca-' if pca_reduction else '-') + feat_t + '.pkl'
-        if isfile(output_filepath):
-            print('%s -> OK' % output_filepath)
-            continue
-
-        start_time = time.time()
-
-        D = None  # feat_t's sampled tracklets
-        ptr = 0
-        for j in range(0, total):
-            idx = train_inds[j]
-
-            filepath = tracklets_path + feat_t + '/' + videonames[idx] + '.pkl'
-            if not isfile(filepath):
-                sys.stderr.write('# WARNING: missing training instance'
-                                 ' {}\n'.format(filepath))
-                sys.stderr.flush()
+        # process the videos
+        for i, feat_t in enumerate(feat_types):
+            output_filepath = intermediates_path + 'bovw' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl'
+            if isfile(output_filepath):
+                print('%s -> OK' % output_filepath)
                 continue
 
-            with open(filepath, 'rb') as f:
-                d = cPickle.load(f)
+            start_time = time.time()
 
-            # init sample
-            if D is None:
-                D = np.zeros((INTERNAL_PARAMETERS['n_samples'], d.shape[1]), dtype=np.float32)
-            # create a random permutation for sampling some tracklets in this vids
-            randp = np.random.permutation(d.shape[0])
-            if d.shape[0] > num_samples_per_vid:
-                randp = randp[:num_samples_per_vid]
-            D[ptr:ptr+len(randp),:] = d[randp,:]
-            ptr += len(randp)
-        D = D[:ptr,:]  # cut out extra reserved space
+            D = None  # feat_t's sampled tracklets
+            ptr = 0
+            for j in range(0, total):
+                idx = train_inds[j]
+
+                filepath = tracklets_path + feat_t + '/' + videonames[idx] + '.pkl'
+                if not isfile(filepath):
+                    sys.stderr.write('# WARNING: missing training instance'
+                                     ' {}\n'.format(filepath))
+                    sys.stderr.flush()
+                    continue
+
+                print filepath
+                with open(filepath, 'rb') as f:
+                    d = cPickle.load(f)
+
+                # init sample
+                if D is None:
+                    D = np.zeros((INTERNAL_PARAMETERS['n_samples'], d.shape[1]), dtype=np.float32)
+                # create a random permutation for sampling some tracklets in this vids
+                randp = np.random.permutation(d.shape[0])
+                if d.shape[0] > num_samples_per_vid:
+                    randp = randp[:num_samples_per_vid]
+                D[ptr:ptr+len(randp),:] = d[randp,:]
+                ptr += len(randp)
+            D = D[:ptr,:]  # cut out extra reserved space
 
 
-        # (special case) trajectory features are originally positions
-        if feat_t == 'trj':
-            D = convert_positions_to_displacements(D)
+            # (special case) trajectory features are originally positions
+            if feat_t == 'trj':
+                D = convert_positions_to_displacements(D)
 
-        # compute PCA map and reduce dimensionality
-        if pca_reduction:
-            pca = PCA(n_components=int(INTERNAL_PARAMETERS['reduction_factor']*D.shape[1]), copy=False)
-            D = pca.fit_transform(D)
+            # compute PCA map and reduce dimensionality
+            if pca_reduction:
+                pca = PCA(n_components=int(INTERNAL_PARAMETERS['reduction_factor']*D.shape[1]), copy=False)
+                D = pca.fit_transform(D)
 
-        # train GMMs for later FV computation
-        D = np.ascontiguousarray(D, dtype=np.float32)
-        cb = ynumpy.kmeans(D, INTERNAL_PARAMETERS['bovw_codebook_k'], \
-                           distance_type=2, nt=1, niter=1000, seed=0, redo=1, \
-                           verbose=True, normalize=False, init='kmeans++')
+            # train codebook for later BOVW computation
+            D = np.ascontiguousarray(D, dtype=np.float32)
+            cb = ynumpy.kmeans(D, INTERNAL_PARAMETERS['bovw_codebook_k'], \
+                               distance_type=2, nt=4, niter=20, seed=0, redo=1, \
+                               verbose=True, normalize=False, init='random')
 
-        with open(output_filepath, 'wb') as f:
-            cPickle.dump(dict(pca=(pca if pca_reduction else None), codebook=cb), f)
+            with open(output_filepath, 'wb') as f:
+                cPickle.dump(dict(pca=(pca if pca_reduction else None), codebook=cb), f)
 
-        elapsed_time = time.time() - start_time
-        print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
+            elapsed_time = time.time() - start_time
+            print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
 
 
 def train_fv_gmms(tracklets_path, videonames, train_inds, feat_types, intermediates_path, pca_reduction=True):
@@ -155,90 +159,92 @@ def train_fv_gmms(tracklets_path, videonames, train_inds, feat_types, intermedia
         print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
 
 
-def compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, st, num_videos, feat_types, feats_path, \
+def compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
                              pca_reduction=True, treelike=True, clusters_path=None, global_repr=True):
     if not exists(feats_path):
         makedirs(feats_path)
 
-    # cach'd pca and gmm
-    cache = dict()
-    for j, feat_t in enumerate(feat_types):
-        with open(intermediates_path + 'bovw' + ('_pca-' if pca_reduction else '-') + feat_t + '.pkl', 'rb') as f:
-            cache[feat_t] = cPickle.load(f)
-        if not exists(feats_path + feat_t):
-            makedirs(feats_path + feat_t)
-
-    file_suffix = 'bovwtree' if treelike else 'bovw'
-
-    # process videos
-    total = len(videonames)
-    for i in range(st,min(st+num_videos,total)):
-        # FV computed for all feature types? see the last in INTERNAL_PARAMETERS['feature_types']
-        output_filepath = feats_path + feat_types[-1] + '/' + videonames[i] + '-' + file_suffix + '.pkl'
-        if isfile(output_filepath):
-            # for j, feat_t in enumerate(feat_types):
-            #     featnames.setdefault(feat_t, []).append(feats_path + feat_t + '/' + videonames[i] + '-bovwtree.pkl')
-            print('%s -> OK' % output_filepath)
-            continue
-
-        start_time = time.time()
-
-        # object features used for the per-frame FV representation computation (cach'd)
-        with open(tracklets_path + 'obj/' + videonames[i] + '.pkl', 'rb') as f:
-            obj = cPickle.load(f)
-        with open(clusters_path + videonames[i] + '.pkl', 'rb') as f:
-            clusters = cPickle.load(f)
-
+    for k, part in enumerate(traintest_parts):
+        # cach'd pca and gmm
+        cache = dict()
         for j, feat_t in enumerate(feat_types):
-            # load video tracklets' feature
-            with open(tracklets_path + feat_t + '/' + videonames[i] + '.pkl', 'rb') as f:
-                d = cPickle.load(f)
-                if feat_t == 'trj': # (special case)
-                    d = convert_positions_to_displacements(d)
+            with open(intermediates_path + 'bovw' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
+                cache[feat_t] = cPickle.load(f)
+            if not exists(feats_path + feat_t):
+                makedirs(feats_path + feat_t)
 
-            # pre-processing
-            if pca_reduction:
-                d = cache[feat_t]['pca'].transform(d)  # reduce dimensionality
+        file_suffix = 'bovwtree' if treelike else 'bovw'
 
-            output_filepath = feats_path + feat_t + '/' + videonames[i] + '-' + file_suffix + '.pkl'
-            # compute BOVW of the video
-            if not treelike:
-                if global_repr:
-                    # (in a global representation)
-                    b = bovw(cache[feat_t]['codebook'], d)
-                else:
-                    # (in a per-frame representation)
-                    fids = np.unique(obj[:,0])
-                    B = np.zeros((len(fids),len(b)), dtype=b.dtype)  # row-wise fisher vectors (matrix)
-                    for k, f in enumerate(fids):
-                        tmp = d[np.where(obj[:,0] == f)[0],:]  # hopefully this is contiguous if d already was
-                        B[k,:] = bovw(cache[feat_t]['codebook'], tmp)  # f-th frame bovw vec
+        # process videos
+        total = len(videonames)
+        for i in range(st,min(st+num_videos,total)):
+            # FV computed for all feature types? see
+            # the last in INTERNAL_PARAMETERS['feature_types']
+            for feat_t in feat_types:
+                output_filepath = feats_path + feat_t + '/' + videonames[i] + '-' + file_suffix + '-' + str(k) + '.pkl'
+                if isfile(output_filepath):
+                    print('%s -> OK' % output_filepath)
+                    continue
 
-                with open(output_filepath, 'wb') as f:
-                    cPickle.dump(dict(b=(b if global_repr else None), B=(None if global_repr else B)), f)
-            else:  # or separately the BOVWs of the tree nodes
-                T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
-                tree = dict()
-                if global_repr:
-                    for parent_idx, children_inds in T.iteritems():
-                        # (in a global representation)
-                        node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
-                        tmp = d[node_inds[0]:node_inds[-1],:]
-                        tree[parent_idx] = bovw(cache[feat_t]['codebook'], tmp)  # bovw vec
-                else:
-                    for parent_idx, children_inds in T.iteritems():
-                        # (in a per-frame representation)
-                        fids = np.unique(obj[node_inds[0]:node_inds[-1],0])
-                        tree[parent_idx] = np.zeros((len(fids),INTERNAL_PARAMETERS['bovw_codebook_k']), dtype=np.float32)
-                        for k, f in enumerate(fids):
-                            tmp = d[np.where(obj[node_inds[0]:node_inds[-1],0] == f)[0],:]
-                            tree[parent_idx][k,:] = bovw(cache[feat_t]['codebook'], tmp)
+                start_time = time.time()
 
-                with open(output_filepath, 'wb') as f:
-                    cPickle.dump(dict(tree_global=(tree if global_repr else None), tree_perframe=(None if global_repr else tree)), f)
+                # object features used for the per-frame FV representation computation (cach'd)
+                with open(tracklets_path + 'obj/' + videonames[i] + '.pkl', 'rb') as f:
+                    obj = cPickle.load(f)
 
-        elapsed_time = time.time() - start_time
-        print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
+                for j, feat_t in enumerate(feat_types):
+                    # load video tracklets' feature
+                    with open(tracklets_path + feat_t + '/' + videonames[i] + '.pkl', 'rb') as f:
+                        d = cPickle.load(f)
+                        if feat_t == 'trj': # (special case)
+                            d = convert_positions_to_displacements(d)
+
+                    # pre-processing
+                    if pca_reduction:
+                        d = cache[feat_t]['pca'].transform(d)  # reduce dimensionality
+
+                    # compute BOVW of the video
+                    if not treelike:
+                        if global_repr:
+                            # (in a global representation)
+                            b = bovw(cache[feat_t]['codebook'], d)
+                        else:
+                            # (in a per-frame representation)
+                            fids = np.unique(obj[:,0])
+                            B = np.zeros((len(fids),len(b)), dtype=b.dtype)  # row-wise fisher vectors (matrix)
+                            for k, f in enumerate(fids):
+                                tmp = d[np.where(obj[:,0] == f)[0],:]  # hopefully this is contiguous if d already was
+                                B[k,:] = bovw(cache[feat_t]['codebook'], tmp)  # f-th frame bovw vec
+
+                        with open(output_filepath, 'wb') as f:
+                            cPickle.dump(dict(b=(b if global_repr else None), B=(None if global_repr else B)), f)
+                    else:  # or separately the BOVWs of the tree nodes
+                        with open(clusters_path + videonames[i] + '.pkl', 'rb') as f:
+                            clusters = cPickle.load(f)
+
+                        T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
+                        tree = dict()
+                        if global_repr:
+                            for parent_idx, children_inds in T.iteritems():
+                                # (in a global representation)
+                                node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
+                                tmp = d[node_inds,:]
+                                tree[parent_idx] = bovw(cache[feat_t]['codebook'], tmp)  # bovw vec
+                        else:
+                            for parent_idx, children_inds in T.iteritems():
+                                # (in a per-frame representation)
+                                node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
+                                fids = np.unique(obj[node_inds,0])
+                                tree[parent_idx] = np.zeros((len(fids),INTERNAL_PARAMETERS['bovw_codebook_k']), dtype=np.float32)
+                                for k, f in enumerate(fids):
+                                    tmp = d[np.where(obj[node_inds,0] == f)[0],:]
+                                    tree[parent_idx][k,:] = bovw(cache[feat_t]['codebook'], tmp)
+
+                        with open(output_filepath, 'wb') as f:
+                            cPickle.dump(dict(tree_global=(tree if global_repr else None), tree_perframe=(None if global_repr else tree)), f)
+
+                elapsed_time = time.time() - start_time
+                print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
     # return featnames
 
@@ -403,7 +409,7 @@ def reconstruct_tree_from_leafs(leafs):
     return h
 
 def bovw(codebook, X):
-    inds, _ = ynumpy.knn(X, codebook, nnn=1, distance_type=2, nt=1)
-    bins, _ = np.histogram(inds, bins=INTERNAL_PARAMETERS['bovw_codebook_k'])
+    inds, dists = ynumpy.knn(X, codebook, nnn=1, distance_type=2, nt=1)
+    bins, _ = np.histogram(inds[:,0], bins=INTERNAL_PARAMETERS['bovw_codebook_k'])
 
     return bins

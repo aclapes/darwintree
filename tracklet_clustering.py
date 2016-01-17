@@ -59,20 +59,29 @@ def cluster(tracklets_path, videonames, st, num_videos, clusters_path, visualize
             D.setdefault('v_x',[]).append( T[1:,0] - T[:-1,0] )
             D.setdefault('v_y',[]).append( T[1:,1] - T[:-1,1] )
 
+        # (Sec. 2.3.1)
+        # A, B = get_tracklet_similarities(D, data_obj[:,7:9])
+        # create a subsample (n << N) stratified by a grid
+        prob = 0.01
+        ret = False
+        while not ret:
+            insample, outsample = stratified_subsample_of_tracklets_in_grid(data_obj[:,7:9], p=prob)
+            if len(insample) > 2:
+                ret = True
+            else:
+                prob *= 10
+
+        # get the similarities of
+        A, medians = multimodal_product_kernel(D, insample, insample)  # (n), n << N tracklets
+        B, _ = multimodal_product_kernel(D, insample, outsample, medians=medians)  # (N - n) tracklets
+        # (Sec. 2.3.2 and 2.3.3)
+        AB = np.hstack((A,B)).astype('float64')
+
         ret = False
         ridge = INTERNAL_PARAMETERS['initial_ridge_value']
         while not ret:
             for _ in xrange(INTERNAL_PARAMETERS['tries_per_ridge_value']):
                 try:
-                    # (Sec. 2.3.1)
-                    # A, B = get_tracklet_similarities(D, data_obj[:,7:9])
-                    # create a subsample (n << N) stratified by a grid
-                    insample, outsample = stratified_subsample_of_tracklets_in_grid(data_obj[:,7:9], p=0.01)  # given tracklets (ending) positions
-                    # get the similarities of
-                    A, medians = multimodal_product_kernel(D, insample, insample)  # (n), n << N tracklets
-                    B, _ = multimodal_product_kernel(D, insample, outsample, medians=medians)  # (N - n) tracklets
-                    # (Sec. 2.3.2 and 2.3.3)
-                    AB = np.hstack((A,B)).astype('float64')
                     E_ = spectral_embedding_nystrom(AB, ridge=ridge)
                     ret = True
                     break
