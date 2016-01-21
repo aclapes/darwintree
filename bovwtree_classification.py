@@ -75,10 +75,10 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Ke_test=Ke_test), f)
 
-            # kernels_train.append((Kr_train,Ke_train))
-            # kernels_test.append((Kr_test,Ke_test))
-            kernels_train.append((np.sqrt(Kr_train),np.sqrt(Ke_train)))
-            kernels_test.append((np.sqrt(Kr_test),np.sqrt(Ke_test)))
+            kernels_train.append((Kr_train,Ke_train))
+            kernels_test.append((Kr_test,Ke_test))
+            # kernels_train.append((np.sqrt(Kr_train),np.sqrt(Ke_train)))
+            # kernels_test.append((np.sqrt(Kr_test),np.sqrt(Ke_test)))
 
         results[k] = train_and_classify(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), c)
 
@@ -183,7 +183,7 @@ def compute_ATEP_kernel(bowtrees_tr, bowtrees_te=None, verbose=True):
     return Kr.T, Ke.T
 
 
-def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, train_test_idx, c=[1], nl=1):
+def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, train_test_idx, c=[1], nl=2):
     '''
 
     :param kernels_tr:
@@ -209,7 +209,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
     p = [None] * class_labels.shape[1]  # performances
     C = [(a,c) for k in xrange(class_labels.shape[1])]  # candidate values for params
 
-    Rval_acc = np.zeros((class_labels.shape[1], len(a), len(c)), dtype=np.float32)
+    Rval_ap = np.zeros((class_labels.shape[1], len(a), len(c)), dtype=np.float32)
     for k in xrange(class_labels.shape[1]):
         for l in xrange(nl):
             for i, a_i in enumerate(C[k][0]):
@@ -224,7 +224,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
 
                 for j, c_j in enumerate(C[k][1]):
                     print l, str(i+1) + '/' + str(len(C[k][0])), str(j+1) + '/' + str(len(C[k][1]))
-                    Rval_acc[k,i,j] = 0
+                    Rval_ap[k,i,j] = 0
                     for (val_tr_inds, val_te_inds) in skf:
                         # test instances not indexed directly, but a mask is created excluding negative instances
                         val_te_msk = np.ones(tr_inds.shape, dtype=np.bool)
@@ -232,15 +232,15 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
                         negatives_msk = np.negative(np.any(class_labels[tr_inds] > 0, axis=1))
                         val_te_msk[negatives_msk] = False
 
-                        acc_tmp, _ = _train_and_classify_binary(
+                        acc_tmp, ap_tmp = _train_and_classify_binary(
                             K_tr[val_tr_inds,:][:,val_tr_inds], K_tr[val_te_msk,:][:,val_tr_inds], \
                             class_labels[tr_inds,k][val_tr_inds], class_labels[tr_inds,k][val_te_msk], \
                             c_j)
-                        Rval_acc[k,i,j] += acc_tmp/skf.n_folds
+                        Rval_ap[k,i,j] += (ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
 
-            a_bidx, c_bidx = np.unravel_index(Rval_acc[k].argmax(), Rval_acc[k].shape)  # a and c bests' indices
+            a_bidx, c_bidx = np.unravel_index(Rval_ap[k].argmax(), Rval_ap[k].shape)  # a and c bests' indices
             S[k] = (C[k][0][a_bidx], C[k][1][c_bidx])
-            p[k] = Rval_acc.max()
+            p[k] = Rval_ap.max()
 
             a_new = np.linspace(C[k][0][a_bidx-1 if a_bidx > 0 else a_bidx], C[k][0][a_bidx+1 if a_bidx < len(a)-1 else a_bidx], len(a))
             c_new = np.linspace(C[k][1][c_bidx-1 if c_bidx > 0 else c_bidx], C[k][1][c_bidx+1 if c_bidx < len(c)-1 else c_bidx], len(c))

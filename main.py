@@ -293,7 +293,7 @@ if __name__ == "__main__":
 
     results = bovwtree_classification.classify(feats_path, videonames, class_labels, traintest_parts, np.linspace(0,1,11), INTERNAL_PARAMETERS['feature_types'], classification_path, \
                                                c=c)
-    
+
     accs = np.zeros((len(traintest_parts),), dtype=np.float32)
     maps = accs.copy()
     for k in xrange(len(traintest_parts)):
