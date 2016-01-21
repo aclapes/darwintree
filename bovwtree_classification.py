@@ -33,8 +33,8 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
         kernels_train = []
         kernels_test = []
         for feat_t in feat_types:
-            train_filepath = join(classification_path, 'bowtrees_ATEP_train-' + feat_t + '.pkl')
-            test_filepath = join(classification_path, 'bowtrees_ATEP_test-' + feat_t + '.pkl')
+            train_filepath = join(classification_path, 'bowtrees_ATEP_train-' + feat_t + '-' + str(k) + '.pkl')
+            test_filepath = join(classification_path, 'bowtrees_ATEP_test-' + feat_t + '-' + str(k) + '.pkl')
             if isfile(train_filepath) and isfile(test_filepath):
                 with open(train_filepath, 'rb') as f:
                     data = cPickle.load(f)
@@ -200,10 +200,10 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
         feat_weights = [1.0/len(feat_types) for i in feat_types]
 
     tr_inds, te_inds = train_test_idx[0], train_test_idx[1]
-    lb = LabelBinarizer(neg_label=-1, pos_label=1)
-    lb.fit(np.arange(class_labels.shape[1]))
+    # lb = LabelBinarizer(neg_label=-1, pos_label=1)
 
-    skf = StratifiedKFold(lb.inverse_transform(class_labels[tr_inds]), n_folds=4, shuffle=False, random_state=42)
+    class_ints = np.dot(class_labels, np.logspace(0, class_labels.shape[1]-1, class_labels.shape[1]))
+    skf = StratifiedKFold(class_ints[tr_inds], n_folds=4, shuffle=False, random_state=42)
 
     S = [None] * class_labels.shape[1]  # selected (best) params
     p = [None] * class_labels.shape[1]  # performances
@@ -226,9 +226,15 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
                     print l, str(i+1) + '/' + str(len(C[k][0])), str(j+1) + '/' + str(len(C[k][1]))
                     Rval_acc[k,i,j] = 0
                     for (val_tr_inds, val_te_inds) in skf:
+                        # test instances not indexed directly, but a mask is created excluding negative instances
+                        val_te_msk = np.ones(tr_inds.shape, dtype=np.bool)
+                        val_te_msk[val_tr_inds] = False
+                        negatives_msk = np.negative(np.any(class_labels[tr_inds] > 0, axis=1))
+                        val_te_msk[negatives_msk] = False
+
                         acc_tmp, _ = _train_and_classify_binary(
-                            K_tr[val_tr_inds,:][:,val_tr_inds], K_tr[val_te_inds,:][:,val_tr_inds], \
-                            class_labels[tr_inds,k][val_tr_inds], class_labels[tr_inds,k][val_te_inds], \
+                            K_tr[val_tr_inds,:][:,val_tr_inds], K_tr[val_te_msk,:][:,val_tr_inds], \
+                            class_labels[tr_inds,k][val_tr_inds], class_labels[tr_inds,k][val_te_msk], \
                             c_j)
                         Rval_acc[k,i,j] += acc_tmp/skf.n_folds
 
@@ -250,6 +256,10 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
     #     ax.set_ylabel('a value')
     #     ax.set_zlabel('acc [0-1]')
     # plt.show()
+
+    te_msk = np.ones((len(te_inds),), dtype=np.bool)
+    negatives_msk = np.negative(np.any(class_labels[te_inds] > 0, axis=1))
+    te_msk[negatives_msk] = False
 
     acc_classes = []
     ap_classes = []
@@ -275,7 +285,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
             K_te += feat_weights[i] * (a_best*Kr_te + (1-a_best)*Ke_te)
 
         c_best = S[k][1]
-        acc, ap = _train_and_classify_binary(K_tr, K_te, class_labels[tr_inds,k], class_labels[te_inds,k], c_best)
+        acc, ap = _train_and_classify_binary(K_tr, K_te[te_msk], class_labels[tr_inds,k], class_labels[te_inds,k][te_msk], c_best)
 
         acc_classes.append(acc)
         ap_classes.append(ap)

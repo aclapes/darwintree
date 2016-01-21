@@ -93,70 +93,72 @@ def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types
             print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
 
 
-def train_fv_gmms(tracklets_path, videonames, train_inds, feat_types, intermediates_path, pca_reduction=True):
+def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=True):
     if not exists(intermediates_path):
         makedirs(intermediates_path)
 
-    total = len(train_inds)
-    num_samples_per_vid = int(INTERNAL_PARAMETERS['n_samples'] / float(total))
+    for k, part in enumerate(traintest_parts):
+        train_inds = np.where(part <= 0)[0]  # train codebook for each possible training parition
+        total = len(train_inds)
+        num_samples_per_vid = int(INTERNAL_PARAMETERS['n_samples'] / float(total))
 
-    # process the videos
-    for i, feat_t in enumerate(feat_types):
-        output_filepath = intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '.pkl'
-        if isfile(output_filepath):
-            print('%s -> OK' % output_filepath)
-            continue
-
-        start_time = time.time()
-
-        D = None  # feat_t's sampled tracklets
-        ptr = 0
-        for j in range(0, total):
-            idx = train_inds[j]
-
-            filepath = tracklets_path + feat_t + '/' + videonames[idx] + '.pkl'
-            if not isfile(filepath):
-                sys.stderr.write('# WARNING: missing training instance'
-                                 ' {}\n'.format(filepath))
-                sys.stderr.flush()
+        # process the videos
+        for i, feat_t in enumerate(feat_types):
+            output_filepath = intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl'
+            if isfile(output_filepath):
+                print('%s -> OK' % output_filepath)
                 continue
 
-            with open(filepath, 'rb') as f:
-                d = cPickle.load(f)
+            start_time = time.time()
 
-            # init sample
-            if D is None:
-                D = np.zeros((INTERNAL_PARAMETERS['n_samples'], d.shape[1]), dtype=np.float32)
-            # create a random permutation for sampling some tracklets in this vids
-            randp = np.random.permutation(d.shape[0])
-            if d.shape[0] > num_samples_per_vid:
-                randp = randp[:num_samples_per_vid]
-            D[ptr:ptr+len(randp),:] = d[randp,:]
-            ptr += len(randp)
-        D = D[:ptr,:]  # cut out extra reserved space
+            D = None  # feat_t's sampled tracklets
+            ptr = 0
+            for j in range(0, total):
+                idx = train_inds[j]
+
+                filepath = tracklets_path + feat_t + '/' + videonames[idx] + '.pkl'
+                if not isfile(filepath):
+                    sys.stderr.write('# WARNING: missing training instance'
+                                     ' {}\n'.format(filepath))
+                    sys.stderr.flush()
+                    continue
+
+                with open(filepath, 'rb') as f:
+                    d = cPickle.load(f)
+
+                # init sample
+                if D is None:
+                    D = np.zeros((INTERNAL_PARAMETERS['n_samples'], d.shape[1]), dtype=np.float32)
+                # create a random permutation for sampling some tracklets in this vids
+                randp = np.random.permutation(d.shape[0])
+                if d.shape[0] > num_samples_per_vid:
+                    randp = randp[:num_samples_per_vid]
+                D[ptr:ptr+len(randp),:] = d[randp,:]
+                ptr += len(randp)
+            D = D[:ptr,:]  # cut out extra reserved space
 
 
-        # (special case) trajectory features are originally positions
-        if feat_t == 'trj':
-            D = convert_positions_to_displacements(D)
+            # (special case) trajectory features are originally positions
+            if feat_t == 'trj':
+                D = convert_positions_to_displacements(D)
 
-        # scale (rootSIFT)
-        D = np.sign(D) * np.sqrt(np.abs(D))
+            # scale (rootSIFT)
+            D = rootSIFT(D)
 
-        # compute PCA map and reduce dimensionality
-        if pca_reduction:
-            pca = PCA(n_components=int(INTERNAL_PARAMETERS['reduction_factor']*D.shape[1]), copy=False)
-            D = pca.fit_transform(D)
+            # compute PCA map and reduce dimensionality
+            if pca_reduction:
+                pca = PCA(n_components=int(INTERNAL_PARAMETERS['reduction_factor']*D.shape[1]), copy=False)
+                D = pca.fit_transform(D)
 
-        # train GMMs for later FV computation
-        D = np.ascontiguousarray(D, dtype=np.float32)
-        gmm = ynumpy.gmm_learn(D, INTERNAL_PARAMETERS['fv_gmm_k'])
+            # train GMMs for later FV computation
+            D = np.ascontiguousarray(D, dtype=np.float32)
+            gmm = ynumpy.gmm_learn(D, INTERNAL_PARAMETERS['fv_gmm_k'])
 
-        with open(output_filepath, 'wb') as f:
-            cPickle.dump(dict(pca=(pca if pca_reduction else None), gmm=gmm), f)
+            with open(output_filepath, 'wb') as f:
+                cPickle.dump(dict(pca=(pca if pca_reduction else None), gmm=gmm), f)
 
-        elapsed_time = time.time() - start_time
-        print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
+            elapsed_time = time.time() - start_time
+            print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
 
 
 def compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
@@ -291,7 +293,7 @@ def compute_fvtree_descriptors(tracklets_path, intermediates_path, videonames, s
                     d = convert_positions_to_displacements(d)
 
             # pre-processing
-            d = np.sign(d) * np.sqrt(np.abs(d))  # scale (rootSIFT)
+            d = rootSIFT(d)  # scale (rootSIFT)
             if pca_reduction:
                 d = cache[feat_t]['pca'].transform(d)  # reduce dimensionality
 
@@ -413,3 +415,8 @@ def bovw(codebook, X):
     bins, _ = np.histogram(inds[:,0], bins=INTERNAL_PARAMETERS['bovw_codebook_k'])
 
     return bins
+
+def rootSIFT(X, p=0.5):
+    return np.sign(X) * np.power(np.abs(X),p)
+
+

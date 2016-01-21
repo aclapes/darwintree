@@ -120,11 +120,12 @@ def filter_low_density(data, k=30, r=5):
                 subset_indices = new_subset_indices
                 tree = KDTree(P[subset_indices,:], leaf_size=1e3)
 
+            p = P[i,:].reshape(1,-1)  # query instance
             if k+1 <= len(subset_indices):
-                dists, inds = tree.query(P[i,:].reshape(1,-1),k=k+1)
+                dists, inds = tree.query(p, k=k+1)
                 dists = dists[0,1:]  # asked the neighbors of only 1 instance, returned in dists as 0-th element
             else:  #len(subset_indices) > 1:
-                dists, inds = tree.query(P[i,:],k=len(subset_indices))
+                dists, inds = tree.query(p, k=len(subset_indices))
                 dists = np.concatenate([dists[0,1:], [np.nan]*(k-len(dists[0,1:]))])
             all_sparsities[i,:] = dists
 

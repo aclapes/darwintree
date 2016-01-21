@@ -33,7 +33,7 @@ INTERNAL_PARAMETERS = dict(
     datasets_path = 'Datasets/',
     data_path = 'Data/darwintree/',
     # TODO: change MANUALLY the name of dataset
-    dataset_name = 'ucf_sports_actions',  #Hollywood2, highfive, ucf_sports_actions
+    dataset_name = 'highfive',  #Hollywood2, highfive, ucf_sports_actions
     feature_types = ['mbh']  # 'hof', 'hog', 'mbh']
 )
 
@@ -150,7 +150,7 @@ def set_highfive_config():
     fullvideonames = [parent_path + 'tv_human_interactions_videos/' + videoname for videoname in videonames]
 
     # create a matrix #{instances}x#{classes}, where entries are all "-1" except for 1s in corresponding class columns
-    class_labels = np.zeros((len(int_inds),len(action_names)),dtype=np.int32)
+    class_labels = (-1) * np.ones((len(int_inds),len(action_names)),dtype=np.int32)
     for i in xrange(len(action_names)):
         class_labels[np.array(int_inds)==i,i] = 1
 
@@ -256,24 +256,24 @@ if __name__ == "__main__":
 
     tracklet_extraction.extract(fullvideonames, videonames, INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], tracklets_path)
     tracklet_clustering.cluster(tracklets_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, clusters_path, visualize=False)
-    tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path, pca_reduction=False)
 
-    # tracklet_representation.train_fv_gmms(tracklets_path, videonames, train_indx, INTERNAL_PARAMETERS['feature_types'], intermediates_path)
-
+    # tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path, pca_reduction=False)
+    # tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path, pca_reduction=False)
+    # quit()
     # tracklet_representation.compute_bovw_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
     #                                                      INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
     # tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
     #                                                    INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
 
-    # tracklet_representation.compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, \
-    #                                                  INSTANCE_ST, INSTANCE_TOTAL, \
-    #                                                  INTERNAL_PARAMETERS['feature_types'], feats_path, \
-    #                                                  pca_reduction=False, treelike=True, global_repr=True, clusters_path=clusters_path)
+    tracklet_representation.compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, \
+                                                     INSTANCE_ST, INSTANCE_TOTAL, \
+                                                     INTERNAL_PARAMETERS['feature_types'], feats_path, \
+                                                     pca_reduction=False, treelike=True, global_repr=True, clusters_path=clusters_path)
     # tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
     #                                                    INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
 
     # c = np.logspace(-20, 18, (18-(-20)+1))
-    c = [0.001, 0.01, 0.1, 0.5, 1, 5, 10, 100, 1000]
+    c = [0.001, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000, 10000]
     # results = bovw_classification.classify(feats_path, videonames, class_labels, traintest_parts, INTERNAL_PARAMETERS['feature_types'], classification_path, \
     #                                        kernel='linear', c=c)
     # print("ACTION_NAME AC mAP")
@@ -293,10 +293,24 @@ if __name__ == "__main__":
 
     results = bovwtree_classification.classify(feats_path, videonames, class_labels, traintest_parts, np.linspace(0,1,11), INTERNAL_PARAMETERS['feature_types'], classification_path, \
                                                c=c)
-    print("ACTION_NAME AC mAP")
+    
+    accs = np.zeros((len(traintest_parts),), dtype=np.float32)
+    maps = accs.copy()
     for k in xrange(len(traintest_parts)):
+        accs[k] = np.mean(results[k]['acc_classes'])
+        maps[k] = np.mean(results[k]['ap_classes'])
+
+    # Print the results
+
+    print("Dataset: %s\n" % INTERNAL_PARAMETERS['dataset_name'])
+    for k in xrange(len(traintest_parts)):
+        print("#Fold, Class_name, ACC, mAP")
+        print("---------------------------")
         for i in xrange(class_labels.shape[1]):
-            print("%s %.2f %.2f" % (action_names[i], results[k]['acc_classes'][i], results[k]['ap_classes'][i]))
-        print("\t ACC %.3f AP %.3f" % (np.mean(results[k]['acc_classes']), np.mean(results[k]['ap_classes'])))
+            print("%d, %s, %.1f%%, %.1f%%" % (k+1, action_names[i], results[k]['acc_classes'][i]*100, results[k]['ap_classes'][i]*100))
+        print("%d, ALL, %.1f%%, %.1f%%" % (k+1, accs[k]*100, maps[k]*100))
+        print
+
+    print("TOTAL, All classes, ACC: %.1f%%, mAP: %.1f%%" % (np.mean(accs)*100, np.mean(maps)*100))
 
     quit()  # TODO: remove this for further processing
