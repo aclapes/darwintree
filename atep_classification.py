@@ -12,6 +12,8 @@ import time
 from sklearn.cross_validation import StratifiedKFold
 from sklearn.preprocessing import LabelBinarizer
 import sys
+import itertools
+from joblib import delayed, Parallel
 
 # import matplotlib.pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D
@@ -20,10 +22,18 @@ INTERNAL_PARAMETERS = dict(
     weights = None
 )
 
-def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_types, classification_path, c=[1]):
-    if not exists(classification_path):
-        makedirs(classification_path)
-
+def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_types, c=[1]):
+    '''
+    TODO Fill this.
+    :param feats_path:
+    :param videonames:
+    :param class_labels:
+    :param traintest_parts:
+    :param a:
+    :param feat_types:
+    :param c:
+    :return:
+    '''
     results = [None] * len(traintest_parts)
     for k, part in enumerate(traintest_parts):
         train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
@@ -33,8 +43,8 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
         kernels_train = []
         kernels_test = []
         for feat_t in feat_types:
-            train_filepath = join(classification_path, 'bowtrees_ATEP_train-' + feat_t + '-' + str(k) + '.pkl')
-            test_filepath = join(classification_path, 'bowtrees_ATEP_test-' + feat_t + '-' + str(k) + '.pkl')
+            train_filepath = join(feats_path, 'ATEP_train-' + feat_t + '-' + str(k) + '.pkl')
+            test_filepath = join(feats_path, 'ATEP_test-' + feat_t + '-' + str(k) + '.pkl')
             if isfile(train_filepath) and isfile(test_filepath):
                 with open(train_filepath, 'rb') as f:
                     data = cPickle.load(f)
@@ -43,26 +53,26 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                     data = cPickle.load(f)
                     Kr_test, Ke_test = data['Kr_test'], data['Ke_test']
             else:
-                bowtrees = [None] * total
+                trees = [None] * total
                 for i in xrange(total):
-                    input_filepath = join(feats_path, feat_t, videonames[i] + '-bovwtree-' + str(k) + '.pkl')
+                    input_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
                     try:
                         with open(input_filepath) as f:
                             root, edges = get_root_and_edges(cPickle.load(f), global_repr=True, dtype=np.float32)
-                            bowtrees[i] = [root, edges]
+                            trees[i] = [root, edges]
                     except IOError:
                         sys.stderr.write('# WARNING: missing training instance'
                                          ' {}\n'.format(input_filepath))
                         sys.stderr.flush()
 
-                bowtrees = np.array(bowtrees)
+                    trees = np.array(trees)
 
                 try:
                     with open(train_filepath, 'rb') as f:
                         data = cPickle.load(f)
                         Kr_train, Ke_train = data['Kr_train'], data['Ke_train']
                 except IOError:
-                    Kr_train, Ke_train = compute_ATEP_kernel(bowtrees_tr=bowtrees[train_inds])
+                    Kr_train, Ke_train = parallel_ATEP_kernel(trees[train_inds], nt=4)
                     with open(train_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_train=Kr_train, Ke_train=Ke_train), f)
 
@@ -71,12 +81,13 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                         data = cPickle.load(f)
                         Kr_test, Ke_test = data['Kr_test'], data['Ke_test']
                 except IOError:
-                    Kr_test, Ke_test = compute_ATEP_kernel(bowtrees_tr=bowtrees[train_inds], bowtrees_te=bowtrees[test_inds])
+                    Kr_test, Ke_test = parallel_ATEP_kernel(trees[test_inds], Y=trees[train_inds], nt=4)
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Ke_test=Ke_test), f)
 
             kernels_train.append((Kr_train,Ke_train))
             kernels_test.append((Kr_test,Ke_test))
+            # # TODO: justify theoretically why further sqrt op improves the results
             # kernels_train.append((np.sqrt(Kr_train),np.sqrt(Ke_train)))
             # kernels_test.append((np.sqrt(Kr_test),np.sqrt(Ke_test)))
 
@@ -144,44 +155,166 @@ def print_progressbar(value, size=20, percent=True):
     print(bar_expr.format(bar_fill, value)),
 
 
-def compute_ATEP_kernel(bowtrees_tr, bowtrees_te=None, verbose=True):
-    is_symmetric = False
-    if bowtrees_te is None:
-        bowtrees_te = bowtrees_tr
+# def compute_ATEP_kernel(X, Y=None, verbose=True):
+#     if verbose:
+#         print('Computing %dx%d ATEP kernel ...\n' % (len(Y), len(X)))
+#
+#     is_symmetric = False
+#     if Y is None:
+#         Y = X
+#         is_symmetric = True
+#
+#     # init the kernel
+#     Kr = np.zeros((len(X), len(Y)), dtype=np.float32)  # root kernel
+#     Ke = Kr.copy()                                                        # edges kernel
+#
+#     # calculate the number of iterations to keep track of the kernel computation progress
+#     ctr = 0
+#     total = len(X) + (len(X) * len(X) - 1) / 2 if is_symmetric else len(X) * len(Y)
+#
+#     print_progressbar(ctr/float(total))
+#     for i in range(0, len(X)):
+#         ptr = i if is_symmetric else 0
+#         for j in range(ptr, len(Y)):
+#             # intersection between root histograms
+#             Kr[i,j] = intersection(X[i][0], Y[j][0])
+#
+#             # pair-wise intersection of edges' histograms
+#             sum_edges = 0.0
+#             for edge_i in range(0, len(X[i][1])):
+#                 for edge_j in range(0, len(Y[j][1])):
+#                     sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
+#             Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
+#
+#             ctr += 1
+#             print_progressbar(ctr/float(total))
+#
+#     if is_symmetric:
+#         Kr += np.triu(Kr,1).T
+#         Ke += np.triu(Ke,1).T
+#
+#     return Kr.T, Ke.T
+#
+# def compute_ATEP_kernel(X, Y, points, is_symmetric=True):
+#     for p in points:
+#         # intersection between root histograms
+#         Kr[i,j] = intersection(X[i][0], Y[j][0])
+#
+#         # pair-wise intersection of edges' histograms
+#         sum_edges = 0.0
+#         for edge_i in range(0, len(X[i][1])):
+#             for edge_j in range(0, len(Y[j][1])):
+#                 sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
+#         Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
+#
+#     return Kr, Ke
+#
+# def compute_fast_ATEP_kernel(X, Y=None, verbose=True):
+#     n = len(X)
+#     pairs = []
+#
+#     if Y is None:
+#         # generate combinations
+#         pairs += [pair for pair in itertools.combinations(np.arange(n),2)]
+#         is_symmetric = True
+#         Y = X
+#         m = n
+#     else:
+#         m = len(Y)
+#         # generate product
+#         pairs += [ pair for pair in itertools.product(*[np.arange(n),np.arange(m)]) ]
+#         is_symmetric = False
+#
+#     # init the kernel
+#     Kr = np.zeros((n,m), dtype=np.float32)  # root kernel
+#     Ke = Kr.copy()
+#
+#     # calculate the number of iterations to keep track of the kernel computation progress
+#     ctr = 0
+#     total = n+n*(n-1)/2 if is_symmetric else n*m
+#
+#     if verbose:
+#         print('Computing fast %dx%d ATEP kernel ...\n' % (n,m))
+#
+#     step = np.int(np.floor(len(pairs)/nt)+1)
+#     sets = [pairs[i*step:((i+1)*step if (i+1)*step < len(pairs) else len(pairs))]
+#             for i in xrange(nt)]
+#
+#
+#
+#     for i in range(0, len(X)):
+#         ptr = i if is_symmetric else 0
+#         for j in range(ptr, len(Y)):
+#             # intersection between root histograms
+#             Kr[i,j] = intersection(X[i][0], Y[j][0])
+#
+#             # pair-wise intersection of edges' histograms
+#             sum_edges = 0.0
+#             for edge_i in range(0, len(X[i][1])):
+#                 for edge_j in range(0, len(Y[j][1])):
+#                     sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
+#             Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
+#
+#             ctr += 1
+#             print_progressbar(ctr/float(total))
+#
+#     if is_symmetric:
+#         Kr += np.triu(Kr,1).T
+#         Ke += np.triu(Ke,1).T
+#
+#     return Kr.T, Ke.T
+
+def ATEP_kernel(X, Y, points):
+    Kr = np.zeros((len(X),len(Y)), dtype=np.float32)  # root kernel
+    Ke = Kr.copy()
+
+    for (i,j) in points:
+        # intersection between root histograms
+        Kr[i,j] = intersection(X[i][0], Y[j][0])
+
+        # pair-wise intersection of edges' histograms
+        sum_edges = 0.0
+        for edge_i in range(0, len(X[i][1])):
+            for edge_j in range(0, len(Y[j][1])):
+                sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
+        Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
+
+    return Kr, Ke
+
+def parallel_ATEP_kernel(X, Y=None, nt=1, verbose=True):
+    pairs = []
+
+    if Y is None:
+        # generate combinations
+        pairs += [(i,i) for i in xrange(len(X))]  # diagonal
+        pairs += [pair for pair in itertools.combinations(np.arange(len(X)),2)]  # upper-triangle combinations
         is_symmetric = True
+        Y = X
+    else:
+        # generate product
+        pairs += [ pair for pair in itertools.product(*[np.arange(len(X)),np.arange(len(Y))]) ]
+        is_symmetric = False
 
     if verbose:
-        print('Computing %dx%d ATEP kernel ...\n' % (len(bowtrees_te), len(bowtrees_tr)))
+        print('Computing fast %dx%d ATEP kernel ...\n' % (len(X),len(Y)))
 
-    # init the kernel
-    Kr = np.zeros((len(bowtrees_tr),len(bowtrees_te)), dtype=np.float32)  # root kernel
-    Ke = Kr.copy()                                                        # edges kernel
+    step = np.int(np.floor(len(pairs)/nt)+1)
 
-    # calculate the number of iterations to keep track of the kernel computation progress
-    ctr = 0
-    total = len(bowtrees_tr)+(len(bowtrees_tr)*len(bowtrees_tr)-1)/2 if is_symmetric else len(bowtrees_tr)*len(bowtrees_te)
-    for i in range(0,len(bowtrees_tr)):
-        ptr = i if is_symmetric else 0
-        for j in range(ptr,len(bowtrees_te)):
-            # intersection between root histograms
-            Kr[i,j] = intersection(bowtrees_tr[i][0], bowtrees_te[j][0])
+    ret = Parallel(n_jobs=nt)(delayed(ATEP_kernel)(X, Y, pairs[i*step:((i+1)*step if (i+1)*step < len(pairs) else len(pairs))])
+                              for i in xrange(nt))
 
-            # pair-wise intersection of edges' histograms
-            sum_edges = 0.0
-            for edge_i in range(0,len(bowtrees_tr[i][1])):
-                for edge_j in range(0,len(bowtrees_te[j][1])):
-                    sum_edges += intersection(bowtrees_tr[i][1][edge_i], bowtrees_te[j][1][edge_j])
-            Ke[i,j] = sum_edges / (len(bowtrees_tr[i][1]) * len(bowtrees_te[j][1]))
+    # aggregate results of parallel computations
+    Kr, Ke = ret[0][0], ret[0][1]
+    for r in ret[1:]:
+        Kr += r[0]
+        Ke += r[1]
 
-            ctr += 1
-            print_progressbar(ctr/float(total))
-
+    # if symmetric, replicate upper to lower triangle matrix
     if is_symmetric:
         Kr += np.triu(Kr,1).T
         Ke += np.triu(Ke,1).T
 
-    return Kr.T, Ke.T
-
+    return
 
 def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, train_test_idx, c=[1], nl=2):
     '''
@@ -223,7 +356,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
                     K_tr += feat_weights[i] * (a_i*Kr_tr + (1-a_i)*Ke_tr)
 
                 for j, c_j in enumerate(C[k][1]):
-                    print l, str(i+1) + '/' + str(len(C[k][0])), str(j+1) + '/' + str(len(C[k][1]))
+                    # print l, str(i+1) + '/' + str(len(C[k][0])), str(j+1) + '/' + str(len(C[k][1]))
                     Rval_ap[k,i,j] = 0
                     for (val_tr_inds, val_te_inds) in skf:
                         # test instances not indexed directly, but a mask is created excluding negative instances
@@ -236,7 +369,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
                             K_tr[val_tr_inds,:][:,val_tr_inds], K_tr[val_te_msk,:][:,val_tr_inds], \
                             class_labels[tr_inds,k][val_tr_inds], class_labels[tr_inds,k][val_te_msk], \
                             c_j)
-                        Rval_ap[k,i,j] += (ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
+                        Rval_ap[k,i,j] += acc_tmp/skf.n_folds  #(ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
 
             a_bidx, c_bidx = np.unravel_index(Rval_ap[k].argmax(), Rval_ap[k].shape)  # a and c bests' indices
             S[k] = (C[k][0][a_bidx], C[k][1][c_bidx])
@@ -315,7 +448,7 @@ def _train_and_classify_binary(K_tr, K_te, train_labels, test_labels, c=1.0):
     pos_acc = float(np.sum(cmp[test_labels > 0]))/len(test_labels[test_labels > 0])
     acc = (pos_acc + neg_acc) / 2.0
 
-    ap = average_precision_score(test_labels, test_scores)
+    ap = average_precision_score(test_labels, test_preds)  #test_scores)
 
     return acc, ap
 

@@ -20,7 +20,7 @@ from sklearn import svm
 from sklearn.metrics import accuracy_score, average_precision_score
 
 import tracklet_extraction, tracklet_clustering, tracklet_representation
-import bovw_classification, bovwtree_classification
+import bovw_classification, atep_classification
 import darwintree
 # from videodarwin import darwin, normalizeL2
 
@@ -33,7 +33,7 @@ INTERNAL_PARAMETERS = dict(
     datasets_path = 'Datasets/',
     data_path = 'Data/darwintree/',
     # TODO: change MANUALLY the name of dataset
-    dataset_name = 'highfive',  #Hollywood2, highfive, ucf_sports_actions
+    dataset_name = 'ucf_sports_actions',  #Hollywood2, highfive, ucf_sports_actions
     feature_types = ['mbh']  # 'hof', 'hog', 'mbh']
 )
 
@@ -56,9 +56,8 @@ def set_global_config():
     intermediates_path = parent_path + 'intermediates/'
     feats_path = parent_path + 'feats/'
     darwins_path = parent_path + 'darwins/'
-    classification_path = parent_path + 'classification/'
 
-    return tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path, classification_path
+    return tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path
 
 
 def set_dataset_config(dataset_name):
@@ -227,6 +226,30 @@ def set_ucfsportsaction_dataset():
     return fullvideonames, videonames, class_labels, action_names, traintest_parts
 
 
+def print_results(results):
+    '''
+    Print in a given format.
+    :param results: array of results which is a structure {no folds x #{acc,ap} x classes}.
+    :return:
+    '''
+    accs = np.zeros((len(results),), dtype=np.float32)
+    maps = accs.copy()
+    for k in xrange(len(results)):
+        accs[k] = np.mean(results[k]['acc_classes'])
+        maps[k] = np.mean(results[k]['ap_classes'])
+
+    # Print the results
+
+    print("Dataset: %s\n" % INTERNAL_PARAMETERS['dataset_name'])
+    for k in xrange(len(results)):
+        print("#Fold, Class_name, ACC, mAP")
+        print("---------------------------")
+        for i in xrange(class_labels.shape[1]):
+            print("%d, %s, %.1f%%, %.1f%%" % (k+1, action_names[i], results[k]['acc_classes'][i]*100, results[k]['ap_classes'][i]*100))
+        print("%d, ALL, %.1f%%, %.1f%%" % (k+1, accs[k]*100, maps[k]*100))
+        print
+
+    print("TOTAL, All classes, ACC: %.1f%%, mAP: %.1f%%" % (np.mean(accs)*100, np.mean(maps)*100))
 
 # ==============================================================================
 # Main
@@ -234,7 +257,7 @@ def set_ucfsportsaction_dataset():
 
 
 if __name__ == "__main__":
-    tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path, classification_path = set_global_config()
+    tracklets_path, clusters_path, intermediates_path, feats_path, _ = set_global_config()
     # load dataset configuration (check README.md, DATASETS section)
     fullvideonames, videonames, class_labels, action_names, traintest_parts = set_dataset_config(INTERNAL_PARAMETERS['dataset_name'])
 
@@ -258,59 +281,27 @@ if __name__ == "__main__":
     tracklet_clustering.cluster(tracklets_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, clusters_path, visualize=False)
 
     # tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path, pca_reduction=False)
-    # tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path, pca_reduction=False)
-    # quit()
-    # tracklet_representation.compute_bovw_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
-    #                                                      INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
-    # tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
-    #                                                    INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
+    tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path)
 
     tracklet_representation.compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, \
                                                      INSTANCE_ST, INSTANCE_TOTAL, \
-                                                     INTERNAL_PARAMETERS['feature_types'], feats_path, \
+                                                     INTERNAL_PARAMETERS['feature_types'], feats_path + 'bovwtree/', \
                                                      pca_reduction=False, treelike=True, global_repr=True, clusters_path=clusters_path)
-    # tracklet_representation.compute_fv_representations(tracklets_path, clusters_path, intermediates_path, videonames, \
-    #                                                    INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], feats_path)
+    tracklet_representation.compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, \
+                                                   INSTANCE_ST, INSTANCE_TOTAL, \
+                                                   INTERNAL_PARAMETERS['feature_types'], feats_path + 'fvtree/', \
+                                                   treelike=True, global_repr=True, clusters_path=clusters_path)
 
-    # c = np.logspace(-20, 18, (18-(-20)+1))
     c = [0.001, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000, 10000]
-    # results = bovw_classification.classify(feats_path, videonames, class_labels, traintest_parts, INTERNAL_PARAMETERS['feature_types'], classification_path, \
-    #                                        kernel='linear', c=c)
-    # print("ACTION_NAME AC mAP")
-    # for k in xrange(len(traintest_parts)):
-    #     for i in xrange(class_labels.shape[1]):
-    #         print("%s %.2f %.2f" % (action_names[i], results[k]['acc_classes'][i], results[k]['ap_classes'][i]))
-    #     print("\t ACC %.3f AP %.3f" % (np.mean(results[k]['acc_classes']), np.mean(results[k]['ap_classes'])))
 
-    # gamma = np.logspace(-18,11,30)
-    # results = bovw_classification.classify(feats_path, videonames, class_labels, traintest_parts, INTERNAL_PARAMETERS['feature_types'], classification_path, \
-    #                                        kernel='rbf', c=c, gamma=gamma)
-    # print("ACTION_NAME AC mAP")
-    # for k in xrange(len(traintest_parts)):
-    #     for i in xrange(class_labels.shape[1]):
-    #         print("%s %.2f %.2f" % (action_names[i], results[k]['acc_classes'][i], results[k]['ap_classes'][i]))
-    #     print("\t ACC %.3f AP %.3f" % (np.mean(results[k]['acc_classes']), np.mean(results[k]['ap_classes'])))
+    # results = atep_classification.classify(feats_path + 'bovwtree/', videonames, class_labels, traintest_parts, \
+    #                                        np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
+    #                                        c=c)
+    # print_results(results)
 
-    results = bovwtree_classification.classify(feats_path, videonames, class_labels, traintest_parts, np.linspace(0,1,11), INTERNAL_PARAMETERS['feature_types'], classification_path, \
-                                               c=c)
-
-    accs = np.zeros((len(traintest_parts),), dtype=np.float32)
-    maps = accs.copy()
-    for k in xrange(len(traintest_parts)):
-        accs[k] = np.mean(results[k]['acc_classes'])
-        maps[k] = np.mean(results[k]['ap_classes'])
-
-    # Print the results
-
-    print("Dataset: %s\n" % INTERNAL_PARAMETERS['dataset_name'])
-    for k in xrange(len(traintest_parts)):
-        print("#Fold, Class_name, ACC, mAP")
-        print("---------------------------")
-        for i in xrange(class_labels.shape[1]):
-            print("%d, %s, %.1f%%, %.1f%%" % (k+1, action_names[i], results[k]['acc_classes'][i]*100, results[k]['ap_classes'][i]*100))
-        print("%d, ALL, %.1f%%, %.1f%%" % (k+1, accs[k]*100, maps[k]*100))
-        print
-
-    print("TOTAL, All classes, ACC: %.1f%%, mAP: %.1f%%" % (np.mean(accs)*100, np.mean(maps)*100))
+    results = atep_classification.classify(feats_path + 'fvtree/', videonames, class_labels, traintest_parts, \
+                                           np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
+                                           c=c)
+    print_results(results)
 
     quit()  # TODO: remove this for further processing
