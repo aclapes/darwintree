@@ -14,6 +14,7 @@ from sklearn.preprocessing import LabelBinarizer
 import sys
 import itertools
 from joblib import delayed, Parallel
+from random import shuffle
 
 # import matplotlib.pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D
@@ -155,120 +156,54 @@ def print_progressbar(value, size=20, percent=True):
     print(bar_expr.format(bar_fill, value)),
 
 
-# def compute_ATEP_kernel(X, Y=None, verbose=True):
-#     if verbose:
-#         print('Computing %dx%d ATEP kernel ...\n' % (len(Y), len(X)))
-#
-#     is_symmetric = False
-#     if Y is None:
-#         Y = X
-#         is_symmetric = True
-#
-#     # init the kernel
-#     Kr = np.zeros((len(X), len(Y)), dtype=np.float32)  # root kernel
-#     Ke = Kr.copy()                                                        # edges kernel
-#
-#     # calculate the number of iterations to keep track of the kernel computation progress
-#     ctr = 0
-#     total = len(X) + (len(X) * len(X) - 1) / 2 if is_symmetric else len(X) * len(Y)
-#
-#     print_progressbar(ctr/float(total))
-#     for i in range(0, len(X)):
-#         ptr = i if is_symmetric else 0
-#         for j in range(ptr, len(Y)):
-#             # intersection between root histograms
-#             Kr[i,j] = intersection(X[i][0], Y[j][0])
-#
-#             # pair-wise intersection of edges' histograms
-#             sum_edges = 0.0
-#             for edge_i in range(0, len(X[i][1])):
-#                 for edge_j in range(0, len(Y[j][1])):
-#                     sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
-#             Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
-#
-#             ctr += 1
-#             print_progressbar(ctr/float(total))
-#
-#     if is_symmetric:
-#         Kr += np.triu(Kr,1).T
-#         Ke += np.triu(Ke,1).T
-#
-#     return Kr.T, Ke.T
-#
-# def compute_ATEP_kernel(X, Y, points, is_symmetric=True):
-#     for p in points:
-#         # intersection between root histograms
-#         Kr[i,j] = intersection(X[i][0], Y[j][0])
-#
-#         # pair-wise intersection of edges' histograms
-#         sum_edges = 0.0
-#         for edge_i in range(0, len(X[i][1])):
-#             for edge_j in range(0, len(Y[j][1])):
-#                 sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
-#         Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
-#
-#     return Kr, Ke
-#
-# def compute_fast_ATEP_kernel(X, Y=None, verbose=True):
-#     n = len(X)
-#     pairs = []
-#
-#     if Y is None:
-#         # generate combinations
-#         pairs += [pair for pair in itertools.combinations(np.arange(n),2)]
-#         is_symmetric = True
-#         Y = X
-#         m = n
-#     else:
-#         m = len(Y)
-#         # generate product
-#         pairs += [ pair for pair in itertools.product(*[np.arange(n),np.arange(m)]) ]
-#         is_symmetric = False
-#
-#     # init the kernel
-#     Kr = np.zeros((n,m), dtype=np.float32)  # root kernel
-#     Ke = Kr.copy()
-#
-#     # calculate the number of iterations to keep track of the kernel computation progress
-#     ctr = 0
-#     total = n+n*(n-1)/2 if is_symmetric else n*m
-#
-#     if verbose:
-#         print('Computing fast %dx%d ATEP kernel ...\n' % (n,m))
-#
-#     step = np.int(np.floor(len(pairs)/nt)+1)
-#     sets = [pairs[i*step:((i+1)*step if (i+1)*step < len(pairs) else len(pairs))]
-#             for i in xrange(nt)]
-#
-#
-#
-#     for i in range(0, len(X)):
-#         ptr = i if is_symmetric else 0
-#         for j in range(ptr, len(Y)):
-#             # intersection between root histograms
-#             Kr[i,j] = intersection(X[i][0], Y[j][0])
-#
-#             # pair-wise intersection of edges' histograms
-#             sum_edges = 0.0
-#             for edge_i in range(0, len(X[i][1])):
-#                 for edge_j in range(0, len(Y[j][1])):
-#                     sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
-#             Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
-#
-#             ctr += 1
-#             print_progressbar(ctr/float(total))
-#
-#     if is_symmetric:
-#         Kr += np.triu(Kr,1).T
-#         Ke += np.triu(Ke,1).T
-#
-#     return Kr.T, Ke.T
+def computeslow_ATEP_kernel(X, Y=None, verbose=True):
+    is_symmetric = False
+    if Y is None:
+        Y = X
+        is_symmetric = True
 
-def ATEP_kernel(X, Y, points):
+    # init the kernel
+    Kr = np.zeros((len(X), len(Y)), dtype=np.float32)  # root kernel
+    Ke = Kr.copy()                                                        # edges kernel
+
+    if verbose:
+        print('Computing %dx%d ATEP kernel ...\n' % (len(X), len(Y)))
+
+    # calculate the number of iterations to keep track of the kernel computation progress
+    ctr = 0
+    total = len(X) + (len(X) * len(X) - 1) / 2 if is_symmetric else len(X) * len(Y)
+
+    print_progressbar(ctr/float(total))
+    for i in range(0, len(X)):
+        ptr = i if is_symmetric else 0
+        for j in range(ptr, len(Y)):
+            # intersection between root histograms
+            Kr[i,j] = intersection(X[i][0], Y[j][0])
+
+            # pair-wise intersection of edges' histograms
+            sum_edges = 0.0
+            for edge_i in range(0, len(X[i][1])):
+                for edge_j in range(0, len(Y[j][1])):
+                    sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
+            Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
+
+            ctr += 1
+            print_progressbar(ctr/float(total))
+
+    if is_symmetric:
+        Kr += np.triu(Kr,1).T
+        Ke += np.triu(Ke,1).T
+
+    return Kr, Ke
+
+
+def ATEP_kernel(X, Y, points, tid=None, verbose=True):
     Kr = np.zeros((len(X),len(Y)), dtype=np.float32)  # root kernel
     Ke = Kr.copy()
 
-    for (i,j) in points:
+    for pid,(i,j) in enumerate(points):
+        if verbose:
+            print('[Parallel ATEP kernel] Thread %d, progress = %.1f%%]' % (tid,100.*(pid+1)/len(points)))
         # intersection between root histograms
         Kr[i,j] = intersection(X[i][0], Y[j][0])
 
@@ -282,25 +217,26 @@ def ATEP_kernel(X, Y, points):
     return Kr, Ke
 
 def parallel_ATEP_kernel(X, Y=None, nt=1, verbose=True):
-    pairs = []
+    points = []
 
     if Y is None:
         # generate combinations
-        pairs += [(i,i) for i in xrange(len(X))]  # diagonal
-        pairs += [pair for pair in itertools.combinations(np.arange(len(X)),2)]  # upper-triangle combinations
+        points += [(i,i) for i in xrange(len(X))]  # diagonal
+        points += [p for p in itertools.combinations(np.arange(len(X)),2)]  # upper-triangle combinations
         is_symmetric = True
         Y = X
     else:
         # generate product
-        pairs += [ pair for pair in itertools.product(*[np.arange(len(X)),np.arange(len(Y))]) ]
+        points += [ p for p in itertools.product(*[np.arange(len(X)),np.arange(len(Y))]) ]
         is_symmetric = False
 
     if verbose:
         print('Computing fast %dx%d ATEP kernel ...\n' % (len(X),len(Y)))
 
-    step = np.int(np.floor(len(pairs)/nt)+1)
+    step = np.int(np.floor(len(points)/nt)+1)
 
-    ret = Parallel(n_jobs=nt)(delayed(ATEP_kernel)(X, Y, pairs[i*step:((i+1)*step if (i+1)*step < len(pairs) else len(pairs))])
+    shuffle(points)  # so all threads have similar workload
+    ret = Parallel(n_jobs=nt, backend='threading')(delayed(ATEP_kernel)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))], tid=i, verbose=True)
                               for i in xrange(nt))
 
     # aggregate results of parallel computations
