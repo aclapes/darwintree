@@ -13,6 +13,7 @@ import numpy as np
 from os.path import isfile, isdir, exists, join, splitext
 from os import listdir
 from os import makedirs
+import time
 
 from scipy.io import loadmat, savemat
 
@@ -33,7 +34,7 @@ INTERNAL_PARAMETERS = dict(
     datasets_path = 'Datasets/',
     data_path = 'Data/darwintree/',
     # TODO: change MANUALLY the name of dataset
-    dataset_name = 'ucf_sports_actions',  #Hollywood2, highfive, ucf_sports_actions
+    dataset_name = 'highfive',  #Hollywood2, highfive, ucf_sports_actions
     feature_types = ['mbh']  # 'hof', 'hog', 'mbh']
 )
 
@@ -280,7 +281,7 @@ if __name__ == "__main__":
     tracklet_extraction.extract(fullvideonames, videonames, INSTANCE_ST, INSTANCE_TOTAL, INTERNAL_PARAMETERS['feature_types'], tracklets_path)
     tracklet_clustering.cluster(tracklets_path, videonames, INSTANCE_ST, INSTANCE_TOTAL, clusters_path, visualize=False)
 
-    # tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path, pca_reduction=False)
+    tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path, pca_reduction=False)
     tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path)
 
     tracklet_representation.compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, \
@@ -294,14 +295,18 @@ if __name__ == "__main__":
 
     c = [0.001, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000, 10000]
 
-    # results = atep_classification.classify(feats_path + 'bovwtree/', videonames, class_labels, traintest_parts, \
-    #                                        np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
-    #                                        c=c)
-    # print_results(results)
+    st_time = time.time()
+    results = atep_classification.classify(feats_path + 'bovwtree/', videonames, class_labels, traintest_parts, \
+                                           np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
+                                           c=c)
+    print('ATEP classification (bovwtree) took %.2f secs.' % (time.time() - st_time))
+    print_results(results)
 
+    st_time = time.time()
     results = atep_classification.classify(feats_path + 'fvtree/', videonames, class_labels, traintest_parts, \
                                            np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
                                            c=c)
+    print('ATEP classification (bovwtree) took %.2f secs.' % (time.time() - st_time))
     print_results(results)
 
     quit()  # TODO: remove this for further processing

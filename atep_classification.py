@@ -88,9 +88,6 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
 
             kernels_train.append((Kr_train,Ke_train))
             kernels_test.append((Kr_test,Ke_test))
-            # # TODO: justify theoretically why further sqrt op improves the results
-            # kernels_train.append((np.sqrt(Kr_train),np.sqrt(Ke_train)))
-            # kernels_test.append((np.sqrt(Kr_test),np.sqrt(Ke_test)))
 
         results[k] = train_and_classify(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), c)
 
@@ -250,9 +247,9 @@ def parallel_ATEP_kernel(X, Y=None, nt=1, verbose=True):
         Kr += np.triu(Kr,1).T
         Ke += np.triu(Ke,1).T
 
-    return
+    return Kr, Ke
 
-def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, train_test_idx, c=[1], nl=2):
+def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, train_test_idx, c=[1], nl=1):
     '''
 
     :param kernels_tr:
@@ -305,7 +302,9 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
                             K_tr[val_tr_inds,:][:,val_tr_inds], K_tr[val_te_msk,:][:,val_tr_inds], \
                             class_labels[tr_inds,k][val_tr_inds], class_labels[tr_inds,k][val_te_msk], \
                             c_j)
-                        Rval_ap[k,i,j] += acc_tmp/skf.n_folds  #(ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
+                        # TODO: decide what it is
+                        Rval_ap[k,i,j] += acc_tmp/skf.n_folds
+                        # Rval_ap[k,i,j] += (ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
 
             a_bidx, c_bidx = np.unravel_index(Rval_ap[k].argmax(), Rval_ap[k].shape)  # a and c bests' indices
             S[k] = (C[k][0][a_bidx], C[k][1][c_bidx])
@@ -384,7 +383,9 @@ def _train_and_classify_binary(K_tr, K_te, train_labels, test_labels, c=1.0):
     pos_acc = float(np.sum(cmp[test_labels > 0]))/len(test_labels[test_labels > 0])
     acc = (pos_acc + neg_acc) / 2.0
 
-    ap = average_precision_score(test_labels, test_preds)  #test_scores)
+    # TODO: decide what is it
+    # ap = average_precision_score(test_labels, test_preds)
+    ap = average_precision_score(test_labels, test_scores)
 
     return acc, ap
 
