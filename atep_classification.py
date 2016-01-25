@@ -23,7 +23,7 @@ INTERNAL_PARAMETERS = dict(
     weights = None
 )
 
-def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_types, c=[1]):
+def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_types, c=[1], nt=4):
     '''
     TODO Fill this.
     :param feats_path:
@@ -62,9 +62,10 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                             root, edges = get_root_and_edges(cPickle.load(f), global_repr=True, dtype=np.float32)
                             trees[i] = [root, edges]
                     except IOError:
-                        sys.stderr.write('# WARNING: missing training instance'
+                        sys.stderr.write('# ERROR: missing training instance'
                                          ' {}\n'.format(input_filepath))
                         sys.stderr.flush()
+                        quit()
 
                     trees = np.array(trees)
 
@@ -73,7 +74,7 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                         data = cPickle.load(f)
                         Kr_train, Ke_train = data['Kr_train'], data['Ke_train']
                 except IOError:
-                    Kr_train, Ke_train = parallel_ATEP_kernel(trees[train_inds], nt=4)
+                    Kr_train, Ke_train = parallel_ATEP_kernel(trees[train_inds], nt=nt)
                     with open(train_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_train=Kr_train, Ke_train=Ke_train), f)
 
@@ -82,7 +83,7 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                         data = cPickle.load(f)
                         Kr_test, Ke_test = data['Kr_test'], data['Ke_test']
                 except IOError:
-                    Kr_test, Ke_test = parallel_ATEP_kernel(trees[test_inds], Y=trees[train_inds], nt=4)
+                    Kr_test, Ke_test = parallel_ATEP_kernel(trees[test_inds], Y=trees[train_inds], nt=nt)
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Ke_test=Ke_test), f)
 

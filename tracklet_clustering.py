@@ -15,29 +15,51 @@ from sklearn.decomposition import PCA
 from spectral_division import spectral_embedding_nystrom, spectral_clustering_division, reconstruct_tree_from_leafs, IndefiniteError, NumericalError
 
 import cv2
+from joblib import delayed, Parallel
+
 
 INTERNAL_PARAMETERS = dict(
     initial_ridge_value = 1e-10,
     tries_per_ridge_value = 3
 )
 
-def cluster(tracklets_path, videonames, st, num_videos, clusters_path, visualize=False):
+def cluster(tracklets_path, videonames, clusters_path, visualize=False):
+    inds = np.linspace(0, len(videonames)-1, len(videonames))
+    _cluster(tracklets_path, videonames, inds, tracklets_path, visualize)
+
+
+def cluster_multiprocess(tracklets_path, videonames, st, num_videos, clusters_path):
+    inds = np.linspace(st, st+num_videos-1, num_videos)
+    _cluster(tracklets_path, videonames, inds, tracklets_path, visualize=False)
+
+
+def cluster_multithread(tracklets_path, videonames, clusters_path, nt=4):
+    inds = np.random.permutation(len(videonames))
+    step = np.int(np.floor(len(inds)/nt)+1)
+    Parallel(n_jobs=nt, backend='threading')(delayed(_cluster)(tracklets_path, videonames, \
+                                                               inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
+                                                               clusters_path, visualize=False)
+                                             for i in xrange(nt))
+
+
+def _cluster(tracklets_path, videonames, indices, clusters_path, visualize=False):
     """
     This function implements the method described in Section 2 ("Clustering dense tracklets")
     of the paper 'Activity representation with motion hierarchies' (IJCV, 2014).
     :param tracklets_path:
     :param videonames:
-    :param st:
-    :param num_videos:
+    :param indices:
     :param clusters_path:
+    :param visualize:
     :return:
     """
+
     if not exists(clusters_path):
         makedirs(clusters_path)
 
     # process the videos
     total = len(videonames)
-    for i in range(st,min(st+num_videos,total)):
+    for i in indices:
         if isfile(clusters_path + videonames[i] + '.pkl'):
             print('%s -> OK' % videonames[i])
             continue

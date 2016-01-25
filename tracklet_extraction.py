@@ -10,13 +10,15 @@ from os import makedirs
 import fileinput
 from spectral_division import build_geom_neighbor_graph
 import pyflann
+from joblib import delayed, Parallel
+
 
 # some hard-coded constants
 FEATURE_EXTRACTOR_RELPATH = 'release/'
 
 INTERNAL_PARAMETERS = dict(
     L = 5,
-    nfeats = dict(
+    feats_dict = dict(
         obj = 10,
         trj = 2,
         hog = 96,
@@ -29,19 +31,36 @@ INTERNAL_PARAMETERS = dict(
     )
 )
 
-def extract(fullvideonames, videonames, st, num_videos, feat_types, tracklets_path):
-    L = INTERNAL_PARAMETERS['L']
-    # establish the features and their dimensions' start-end
-    feats_beginend = {'obj' : (0,               \
-                              INTERNAL_PARAMETERS['nfeats']['obj']), \
-                     'trj' : (INTERNAL_PARAMETERS['nfeats']['obj'],                           \
-                              INTERNAL_PARAMETERS['nfeats']['obj']+(INTERNAL_PARAMETERS['nfeats']['trj']*(L+1))),   \
-                     'hog' : (INTERNAL_PARAMETERS['nfeats']['obj']+(INTERNAL_PARAMETERS['nfeats']['trj']*(L+1)),                 \
-                              INTERNAL_PARAMETERS['nfeats']['obj']+(INTERNAL_PARAMETERS['nfeats']['trj']*(L+1))+INTERNAL_PARAMETERS['nfeats']['hog']), \
-                     'hof' : (INTERNAL_PARAMETERS['nfeats']['obj']+(INTERNAL_PARAMETERS['nfeats']['trj']*(L+1))+INTERNAL_PARAMETERS['nfeats']['hog'],                 \
-                              INTERNAL_PARAMETERS['nfeats']['obj']+(INTERNAL_PARAMETERS['nfeats']['trj']*(L+1))+INTERNAL_PARAMETERS['nfeats']['hog']+INTERNAL_PARAMETERS['nfeats']['hof']), \
-                     'mbh': (INTERNAL_PARAMETERS['nfeats']['obj']+(INTERNAL_PARAMETERS['nfeats']['trj']*(L+1))+INTERNAL_PARAMETERS['nfeats']['hog']+INTERNAL_PARAMETERS['nfeats']['hof'],                  \
-                             INTERNAL_PARAMETERS['nfeats']['obj']+(INTERNAL_PARAMETERS['nfeats']['trj']*(L+1))+INTERNAL_PARAMETERS['nfeats']['hog']+INTERNAL_PARAMETERS['nfeats']['hof']+INTERNAL_PARAMETERS['nfeats']['mbh'])}
+
+def extract(fullvideonames, videonames, feat_types, tracklets_path):
+    _extract(fullvideonames, videonames, np.arange(len(videonames)), feat_types, tracklets_path)
+
+
+def extract_multiprocess(fullvideonames, videonames, st, num_videos, feat_types, tracklets_path):
+    inds = np.linspace(st, st+num_videos-1, num_videos)
+    _extract(fullvideonames, videonames, inds, feat_types, tracklets_path)
+
+
+def extract_multithread(fullvideonames, videonames, feat_types, tracklets_path, nt=4):
+    inds = np.random.permutation(len(videonames))
+    step = np.int(np.floor(len(inds)/nt)+1)
+    Parallel(n_jobs=nt, backend='threading')(delayed(_extract)(fullvideonames, videonames, \
+                                                               inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
+                                                               feat_types, tracklets_path)
+                                             for i in xrange(nt))
+
+
+def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path):
+    """
+    Extract features using Improved Dense Trajectories by Wang et. al.
+    :param fullvideonames:
+    :param videonames:
+    :param indices:
+    :param feat_types:
+    :param tracklets_path:
+    :return:
+    """
+    feats_beginend = get_features_beginend(INTERNAL_PARAMETERS['feats_dict'], INTERNAL_PARAMETERS['L'])
 
     # prepare output directories
     if not exists('tmpfiles/'):
@@ -54,7 +73,7 @@ def extract(fullvideonames, videonames, st, num_videos, feat_types, tracklets_pa
 
     # process the videos
     total = len(fullvideonames)
-    for i in range(st,min(st+num_videos,total)):
+    for i in indices:
         if isfile(tracklets_path + 'obj/' + videonames[i] + '.pkl'):
             print('%s.avi -> OK' % fullvideonames[i])
             continue
@@ -62,7 +81,7 @@ def extract(fullvideonames, videonames, st, num_videos, feat_types, tracklets_pa
         start_time = time.time()
         # extract the features into temporary file
         if not isfile('tmpfiles/' + videonames[i] + '.tmp'):
-            extract_wang_features(fullvideonames[i] + '.avi', L, 'tmpfiles/' + videonames[i] + '.tmp')
+            extract_wang_features(fullvideonames[i] + '.avi', INTERNAL_PARAMETERS['L'], 'tmpfiles/' + videonames[i] + '.tmp')
 
         # read the temporary file to numpy array
         data = []
@@ -86,6 +105,19 @@ def extract(fullvideonames, videonames, st, num_videos, feat_types, tracklets_pa
 # Helper functions
 # ==============================================================================
 
+def get_features_beginend(feats_dict, L):
+    # establish the features and their dimensions' start-end
+    feats_beginend = {'obj' : (0,                 \
+                              feats_dict['obj']), \
+                     'trj' : (feats_dict['nfeats']['obj'],                                        \
+                              feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))),   \
+                     'hog' : (feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1)),                              \
+                              feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))+feats_dict['nfeats']['hog']), \
+                     'hof' : (feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))+feats_dict['nfeats']['hog'],                              \
+                              feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))+feats_dict['nfeats']['hog']+feats_dict['nfeats']['hof']), \
+                     'mbh' : (feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))+feats_dict['nfeats']['hog']+feats_dict['nfeats']['hof'],                           \
+                              feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))+feats_dict['nfeats']['hog']+feats_dict['nfeats']['hof']+feats_dict['nfeats']['mbh'])}
+
 
 # Version using precomputed optical flow (stored in .flo files)
 def extract_wang_features(videofile_path, traj_length, output_features_path):
@@ -97,6 +129,7 @@ def extract_wang_features(videofile_path, traj_length, output_features_path):
     proc = subprocess.Popen(' '.join(argsArray), cwd=FEATURE_EXTRACTOR_RELPATH, shell=True, stdout=f)
     proc.communicate()
     f.close()
+
 
 def filter_low_density(data, k=30, r=5):
     """
@@ -135,4 +168,3 @@ def filter_low_density(data, k=30, r=5):
     inliers = np.where(local_sparsities <= (mean_sparsity + stddev_sparsity))[0]
 
     return inliers
-
