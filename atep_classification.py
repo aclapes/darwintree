@@ -57,6 +57,7 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                 trees = [None] * total
                 for i in xrange(total):
                     input_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
+                    print input_filepath  # TODO: this is debug. get rid of this line ASAP
                     try:
                         with open(input_filepath) as f:
                             root, edges = get_root_and_edges(cPickle.load(f), global_repr=True, dtype=np.float32)

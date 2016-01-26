@@ -11,6 +11,7 @@ from yael import ynumpy
 import time
 import sys
 from joblib import delayed, Parallel
+import videodarwin
 
 
 from Queue import PriorityQueue
@@ -36,8 +37,13 @@ def compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, tra
 
 def compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
                            pca_reduction=True, treelike=True, clusters_path=None, global_repr=True):
-    _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
-                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, global_repr=global_repr)
+    _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
+                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, global_repr=global_repr)
+
+def compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
+                           pca_reduction=True, treelike=True, clusters_path=None):
+    _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
+                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
 
 
 def compute_bovw_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
@@ -49,8 +55,14 @@ def compute_bovw_descriptors_multiprocess(tracklets_path, intermediates_path, vi
 def compute_fv_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
                                         pca_reduction=True, treelike=True, clusters_path=None, global_repr=True):
     inds = np.linspace(st, st+num_videos-1, num_videos)
-    _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
-                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, global_repr=global_repr)
+    _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
+                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, global_repr=global_repr)
+
+def compute_vd_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
+                                        pca_reduction=True, treelike=True, clusters_path=None):
+    inds = np.linspace(st, st+num_videos-1, num_videos)
+    _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
+                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
 
 
 def compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
@@ -67,12 +79,22 @@ def compute_fv_descriptors_multithread(tracklets_path, intermediates_path, video
                                        nt=4, pca_reduction=True, treelike=True, clusters_path=None, global_repr=True):
     inds = np.random.permutation(len(videonames))
     step = np.int(np.floor(len(inds)/nt)+1)
-    Parallel(n_jobs=nt, backend='threading')(delayed(_compute_bovw_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
-                                                                                inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
-                                                                                feat_types, feats_path, \
-                                                                                pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, global_repr=global_repr)
+    Parallel(n_jobs=nt, backend='threading')(delayed(_compute_fv_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
+                                                                              inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
+                                                                              feat_types, feats_path, \
+                                                                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, global_repr=global_repr)
                                                      for i in xrange(nt))
 
+
+def compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
+                                       nt=4, pca_reduction=True, treelike=True, clusters_path=None):
+    inds = np.random.permutation(len(videonames))
+    step = np.int(np.floor(len(inds)/nt)+1)
+    Parallel(n_jobs=nt, backend='threading')(delayed(_compute_vd_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
+                                                                              inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
+                                                                              feat_types, feats_path, \
+                                                                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+                                                     for i in xrange(nt))
 
 # ==============================================================================
 # Main functions
@@ -163,8 +185,6 @@ def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, tr
                 elapsed_time = time.time() - start_time
                 print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
-    # return featnames
-
 
 def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
                             pca_reduction=True, treelike=True, clusters_path=None, global_repr=True):
@@ -182,7 +202,7 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
 
         # process videos
         total = len(videonames)
-        for i in range(st,min(st+num_videos,total)):
+        for i in indices:
             # FV computed for all feature types? see the last in INTERNAL_PARAMETERS['feature_types']
             output_filepath = feats_path + feat_types[-1] + '/' + videonames[i] + '-' + str(k) + '.pkl'
             if isfile(output_filepath):
@@ -242,6 +262,7 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
                     else:
                         for parent_idx, children_inds in T.iteritems():
                             # (in a per-frame representation)
+                            node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
                             fids = np.unique(obj[node_inds[0]:node_inds[-1],0])
                             dim = INTERNAL_PARAMETERS['fv_gmm_k'] * len(INTERNAL_PARAMETERS['fv_repr_feats']) * d.shape[1]
                             tree[parent_idx] = np.zeros((len(fids),dim), dtype=np.float32)
@@ -255,7 +276,90 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
             elapsed_time = time.time() - start_time
             print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
-    # return featnames
+
+def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
+                            pca_reduction=True, treelike=True, clusters_path=None):
+    if not exists(feats_path):
+        makedirs(feats_path)
+
+    for k, part in enumerate(traintest_parts):
+        # cach'd pca and gmm
+        cache = dict()
+        for j, feat_t in enumerate(feat_types):
+            if not exists(feats_path + feat_t):
+                makedirs(feats_path + feat_t)
+            with open(intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
+                cache[feat_t] = cPickle.load(f)
+
+        # process videos
+        total = len(videonames)
+        for i in indices:
+            # FV computed for all feature types? see the last in INTERNAL_PARAMETERS['feature_types']
+            output_filepath = feats_path + feat_types[-1] + '/' + videonames[i] + '-' + str(k) + '.pkl'
+            if isfile(output_filepath):
+                # for j, feat_t in enumerate(feat_types):
+                #     featnames.setdefault(feat_t, []).append(feats_path + feat_t + '/' + videonames[i] + '-fvtree.pkl')
+                print('%s -> OK' % output_filepath)
+                continue
+
+            start_time = time.time()
+
+            # object features used for the per-frame FV representation computation (cach'd)
+            with open(tracklets_path + 'obj/' + videonames[i] + '.pkl', 'rb') as f:
+                obj = cPickle.load(f)
+            with open(clusters_path + videonames[i] + '.pkl', 'rb') as f:
+                clusters = cPickle.load(f)
+
+            for j, feat_t in enumerate(feat_types):
+                # load video tracklets' feature
+                with open(tracklets_path + feat_t + '/' + videonames[i] + '.pkl', 'rb') as f:
+                    d = cPickle.load(f)
+                    if feat_t == 'trj': # (special case)
+                        d = convert_positions_to_displacements(d)
+
+                # pre-processing
+                d = rootSIFT(d)  # scale (rootSIFT)
+                if pca_reduction:
+                    d = cache[feat_t]['pca'].transform(d)  # reduce dimensionality
+
+                d = np.ascontiguousarray(d, dtype=np.float32)  # required in many of Yael functions
+
+                output_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
+                # compute FV of the video
+                if not treelike:
+                    # (in a per-frame representation)
+                    fids = np.unique(obj[:,0])
+                    V = np.zeros((len(fids),len(v)), dtype=v.dtype)  # row-wise fisher vectors (matrix)
+                    for k, f in enumerate(fids):
+                        tmp = d[np.where(obj[:,0] == f)[0],:]  # hopefully this is contiguous if d already was
+                        V[k,:] = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])  # f-th frame fisher vec
+
+                    vd = videodarwin.darwin(V)
+
+                    with open(output_filepath, 'wb') as f:
+                        cPickle.dump(dict(v=vd, V=None), f)
+
+                else:  # or separately the FVs of the tree nodes
+                    T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
+                    tree = dict()
+
+                    for parent_idx, children_inds in T.iteritems():
+                        # (in a per-frame representation)
+                        node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
+                        fids = np.unique(obj[node_inds[0]:node_inds[-1],0])
+                        dim = INTERNAL_PARAMETERS['fv_gmm_k'] * len(INTERNAL_PARAMETERS['fv_repr_feats']) * d.shape[1]
+                        V = np.zeros((len(fids),dim), dtype=np.float32)
+                        for k, f in enumerate(fids):
+                            tmp = d[np.where(obj[node_inds[0]:node_inds[-1],0] == f)[0],:]
+                            V[k,:] = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])
+
+                        tree[parent_idx] = videodarwin.darwin(V)
+
+                    with open(output_filepath, 'wb') as f:
+                        cPickle.dump(dict(tree_global=tree, tree_perframe=None), f)
+
+            elapsed_time = time.time() - start_time
+            print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
 
 def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=False, nt=4):

@@ -8,47 +8,65 @@ Copyrights: Albert Clap\'{e}s, 2015
 
 '''
 
-import sys
 import numpy as np
-from os.path import isfile, isdir, exists, join, splitext
-from os import listdir
-from os import makedirs
+from os.path import isdir, splitext
+from os import listdir, makedirs
 import time
 
-from scipy.io import loadmat, savemat
+from scipy.io import loadmat
 
-from sklearn import svm
-from sklearn.metrics import accuracy_score, average_precision_score
+import tracklet_extraction, tracklet_clustering, tracklet_representation, atep_classification
 
-import tracklet_extraction, tracklet_clustering, tracklet_representation
-import bovw_classification, atep_classification
-import darwintree
-# from videodarwin import darwin, normalizeL2
+import xmltodict
 
-import itertools
-
-
-# change depending on the computer
-INTERNAL_PARAMETERS = dict(
-    home_path = '/Volumes/MacintoshHD/Users/aclapes/',
-    datasets_path = 'Datasets/',
-    data_path = 'Data/darwintree/',
-    # TODO: change MANUALLY the name of dataset
-    dataset_name = 'highfive',  #Hollywood2, highfive, ucf_sports_actions
-    feature_types = ['mbh']  # 'hof', 'hog', 'mbh']
-)
 
 # ==============================================================================
-# Helper functions
+# Configuration functions
 # ==============================================================================
 
-
-def set_global_config():
-    '''
-
+def load_XML_config(filepath):
+    """
+    Read the configuration from a .xml file in disk.
+    This sets some paths and the features to use.
+    :param filepath:
     :return:
-    '''
-    parent_path = INTERNAL_PARAMETERS['home_path'] + INTERNAL_PARAMETERS['data_path'] + INTERNAL_PARAMETERS['dataset_name'] + '/'
+    """
+    config_dict = dict()
+
+    with open(filepath) as fd:
+        xml = xmltodict.parse(fd.read())
+
+    for path in xml['configuration']['path']:
+        config_dict[path['@key']] = path['#text'].encode('utf-8')
+
+    features_list = xml['configuration']['features_list']
+
+    if type(features_list['item']) is unicode:
+        config_dict.setdefault('features_list',[]).append(features_list['item'].encode('utf-8'))
+    else:
+        for item in features_list['item']:
+            feat = item.encode('utf-8')
+            config_dict.setdefault('features_list',[]).append(feat)
+
+    methods_list = xml['configuration']['methods_list']
+
+    if type(methods_list['item']) is unicode:
+        config_dict.setdefault('methods_list',[]).append(methods_list['item'].encode('utf-8'))
+    else:
+        for item in methods_list['item']:
+            method = item.encode('utf-8')
+            config_dict.setdefault('methods_list',[]).append(method)
+
+    return config_dict
+
+
+def get_global_config(xml_config):
+    """
+    Construct some additional (output) paths from the xml configuration.
+    :param xml_config:
+    :return:
+    """
+    parent_path = xml_config['home_path'] + xml_config['data_path'] + xml_config['dataset_name'] + '/'
     if not isdir(parent_path):
         makedirs(parent_path)
 
@@ -61,23 +79,26 @@ def set_global_config():
     return tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path
 
 
-def set_dataset_config(dataset_name):
-    if dataset_name == 'Hollywood2':
-        config = set_hollywood2_config()
-    elif dataset_name == 'highfive':
-        config = set_highfive_config()
-    elif dataset_name == 'ucf_sports_actions':
-        config = set_ucfsportsaction_dataset()
-
-    return config
-
-
-def set_hollywood2_config():
-    '''
-    Hard-codes some paths and configuration values.
+def get_dataset_info(xml_config):
+    """
+    Get dataset-related information. Configuration from xml is as input needed.
+    :param xml_config:
     :return:
-    '''
-    parent_path = INTERNAL_PARAMETERS['home_path'] + INTERNAL_PARAMETERS['datasets_path'] + INTERNAL_PARAMETERS['dataset_name'] + '/'
+    """
+    dataset_name = xml_config['dataset_name']
+    dataset_path = xml_config['home_path'] + xml_config['datasets_path'] + dataset_name + '/'
+
+    if dataset_name == 'hollywood2':
+        dataset_info = get_hollywood2_config(dataset_path)
+    elif dataset_name == 'highfive':
+        dataset_info = get_highfive_config(dataset_path)
+    elif dataset_name == 'ucf_sports_actions':
+        dataset_info = get_ucfsportsaction_dataset(dataset_path)
+
+    return dataset_info
+
+
+def get_hollywood2_config(parent_path):
     videos_dir = parent_path + 'AVIClips/'
     split_file_path = parent_path + 'train_test_split.mat'
 
@@ -97,12 +118,12 @@ def set_hollywood2_config():
     return fullvideonames, videonames, class_labels, action_names, train_test_indx
 
 
-def set_highfive_config():
+def get_highfive_config(parent_path):
     '''
     Hard-codes some paths and configuration values.
     :return:
     '''
-    parent_path = INTERNAL_PARAMETERS['home_path'] + INTERNAL_PARAMETERS['datasets_path'] + INTERNAL_PARAMETERS['dataset_name'] + '/'
+
     videos_dir = parent_path + 'tv_human_interactions_videos/'
     # splits_dir = parent_path + 'tv_human_interaction_annotations/'  # TODO: think if i'll need to use for test
 
@@ -159,8 +180,7 @@ def set_highfive_config():
     return fullvideonames, videonames, class_labels, action_names, traintest_parts
 
 
-def set_ucfsportsaction_dataset():
-    parent_path = INTERNAL_PARAMETERS['home_path'] + INTERNAL_PARAMETERS['datasets_path'] + INTERNAL_PARAMETERS['dataset_name'] + '/'
+def get_ucfsportsaction_dataset(parent_path):
     videos_dir = parent_path
 
     # From the publication webpage, some hard-coded metainfo.
@@ -241,7 +261,6 @@ def print_results(results):
 
     # Print the results
 
-    print("Dataset: %s\n" % INTERNAL_PARAMETERS['dataset_name'])
     for k in xrange(len(results)):
         print("#Fold, Class_name, ACC, mAP")
         print("---------------------------")
@@ -258,37 +277,50 @@ def print_results(results):
 
 
 if __name__ == "__main__":
-    tracklets_path, clusters_path, intermediates_path, feats_path, _ = set_global_config()
-    # load dataset configuration (check README.md, DATASETS section)
-    fullvideonames, videonames, class_labels, action_names, traintest_parts = set_dataset_config(INTERNAL_PARAMETERS['dataset_name'])
+    # prepare configuration-related variables
+    xml_config = load_XML_config('config.xml')  # get it from XML file
+    tracklets_path, clusters_path, intermediates_path, feats_path, darwins_path = get_global_config(xml_config)  # build output dirs
+    fullvideonames, videonames, class_labels, action_names, traintest_parts = get_dataset_info(xml_config)  # build dataset-related variable
 
-    tracklet_extraction.extract_multithread(fullvideonames, videonames, INTERNAL_PARAMETERS['feature_types'], tracklets_path)
+    # Extract improved dense trajectories
+    tracklet_extraction.extract_multithread(fullvideonames, videonames, xml_config['features_list'], tracklets_path)
     tracklet_clustering.cluster_multithread(tracklets_path, videonames, clusters_path)
 
-    tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path, pca_reduction=False)
-    tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, INTERNAL_PARAMETERS['feature_types'], intermediates_path)
+    # BOVW-tree descriptor computation and classification
+    if 'bovwtree' in xml_config['methods_list']:
+        tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False)
+        tracklet_representation.compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+                                                                     feats_path + 'bovwtree/', \
+                                                                     pca_reduction=False, treelike=True, global_repr=True, clusters_path=clusters_path)
+        st_time = time.time()
+        results = atep_classification.classify(feats_path + 'bovwtree/', videonames, class_labels, traintest_parts, \
+                                               np.linspace(0, 1, 11), xml_config['features_list'], c=np.logspace(-2, 4, 14))
+        print('ATEP classification (bovwtree) took %.2f secs.' % (time.time() - st_time))
+        print_results(results)
 
-    tracklet_representation.compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, \
-                                                                 INTERNAL_PARAMETERS['feature_types'], feats_path + 'bovwtree/', \
-                                                                 pca_reduction=False, treelike=True, global_repr=True, clusters_path=clusters_path)
-    tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, \
-                                                               INTERNAL_PARAMETERS['feature_types'], feats_path + 'fvtree/', \
-                                                               treelike=True, global_repr=True, clusters_path=clusters_path)
+    # FV-tree descriptor computation and classification
+    if 'fvtree' in xml_config['methods_list']:
+        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path)
+        tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+                                                                   feats_path + 'fvtree/', \
+                                                                   treelike=True, global_repr=True, clusters_path=clusters_path)
 
-    c = [0.001, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000, 10000]
+        st_time = time.time()
+        results = atep_classification.classify(feats_path + 'fvtree/', videonames, class_labels, traintest_parts, \
+                                               np.linspace(0, 1, 11), xml_config['features_list'], c=np.logspace(-2, 4, 14))
+        print('ATEP classification (fvtree) took %.2f secs.' % (time.time() - st_time))
+        print_results(results)
 
-    st_time = time.time()
-    results = atep_classification.classify(feats_path + 'bovwtree/', videonames, class_labels, traintest_parts, \
-                                           np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
-                                           c=c)
-    print('ATEP classification (bovwtree) took %.2f secs.' % (time.time() - st_time))
-    print_results(results)
-
-    st_time = time.time()
-    results = atep_classification.classify(feats_path + 'fvtree/', videonames, class_labels, traintest_parts, \
-                                           np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
-                                           c=c)
-    print('ATEP classification (bovwtree) took %.2f secs.' % (time.time() - st_time))
-    print_results(results)
+    # Darwin-tree descriptor computation and classification
+    if 'darwintree' in xml_config['methods_list']:
+        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path)
+        tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+                                                                   feats_path + 'darwintree/', \
+                                                                   treelike=True, clusters_path=clusters_path)
+        st_time = time.time()
+        results = atep_classification.classify(feats_path + 'darwintree/', videonames, class_labels, traintest_parts, \
+                                               [1], xml_config['features_list'], c=np.logspace(-2, 4, 14))
+        print('ATEP classification (darwintree) took %.2f secs.' % (time.time() - st_time))
+        print_results(results)
 
     quit()  # TODO: remove this for further processing

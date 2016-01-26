@@ -109,15 +109,15 @@ def get_features_beginend(feats_dict, L):
     # establish the features and their dimensions' start-end
     feats_beginend = {'obj' : (0,                 \
                               feats_dict['obj']), \
-                     'trj' : (feats_dict['nfeats']['obj'],                                        \
-                              feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))),   \
-                     'hog' : (feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1)),                              \
-                              feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))+feats_dict['nfeats']['hog']), \
-                     'hof' : (feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))+feats_dict['nfeats']['hog'],                              \
-                              feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))+feats_dict['nfeats']['hog']+feats_dict['nfeats']['hof']), \
-                     'mbh' : (feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))+feats_dict['nfeats']['hog']+feats_dict['nfeats']['hof'],                           \
-                              feats_dict['nfeats']['obj']+(feats_dict['nfeats']['trj']*(L+1))+feats_dict['nfeats']['hog']+feats_dict['nfeats']['hof']+feats_dict['nfeats']['mbh'])}
-
+                     'trj' : (feats_dict['obj'],                                        \
+                              feats_dict['obj']+(feats_dict['trj']*(L+1))),   \
+                     'hog' : (feats_dict['obj']+(feats_dict['trj']*(L+1)),                              \
+                              feats_dict['obj']+(feats_dict['trj']*(L+1))+feats_dict['hog']), \
+                     'hof' : (feats_dict['obj']+(feats_dict['trj']*(L+1))+feats_dict['hog'],                              \
+                              feats_dict['obj']+(feats_dict['trj']*(L+1))+feats_dict['hog']+feats_dict['hof']), \
+                     'mbh' : (feats_dict['obj']+(feats_dict['trj']*(L+1))+feats_dict['hog']+feats_dict['hof'],                           \
+                              feats_dict['obj']+(feats_dict['trj']*(L+1))+feats_dict['hog']+feats_dict['hof']+feats_dict['mbh'])}
+    return feats_beginend
 
 # Version using precomputed optical flow (stored in .flo files)
 def extract_wang_features(videofile_path, traj_length, output_features_path):
