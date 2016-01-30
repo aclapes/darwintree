@@ -60,7 +60,7 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                     print input_filepath  # TODO: this is debug. get rid of this line ASAP
                     try:
                         with open(input_filepath) as f:
-                            root, edges = get_root_and_edges(cPickle.load(f), global_repr=True, dtype=np.float32)
+                            root, edges = get_root_and_edges(cPickle.load(f), dtype=np.float32)
                             trees[i] = [root, edges]
                     except IOError:
                         sys.stderr.write('# ERROR: missing training instance'
@@ -75,7 +75,7 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                         data = cPickle.load(f)
                         Kr_train, Ke_train = data['Kr_train'], data['Ke_train']
                 except IOError:
-                    Kr_train, Ke_train = parallel_ATEP_kernel(trees[train_inds], nt=nt)
+                    Kr_train, Ke_train = ATEP_kernel(trees[train_inds], nt=nt)
                     with open(train_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_train=Kr_train, Ke_train=Ke_train), f)
 
@@ -84,7 +84,7 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                         data = cPickle.load(f)
                         Kr_test, Ke_test = data['Kr_test'], data['Ke_test']
                 except IOError:
-                    Kr_test, Ke_test = parallel_ATEP_kernel(trees[test_inds], Y=trees[train_inds], nt=nt)
+                    Kr_test, Ke_test = ATEP_kernel(trees[test_inds], Y=trees[train_inds], nt=nt)
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Ke_test=Ke_test), f)
 
@@ -101,21 +101,18 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
 # Helper functions
 # ==============================================================================
 
-def get_root_and_edges(data, global_repr=True, dtype=np.float32):
+def get_root_and_edges(data, dtype=np.float32):
     '''
     A tree is a list of edges, with each edge as the concatenation of the repr. of parent and child nodes.
     :param data:
     :return root, edges:
     '''
-
-    drepr = 'tree_global' if global_repr else 'tree_perframe'
-
-    root = data[drepr][1].astype(dtype=dtype)
+    root = data['tree'][1].astype(dtype=dtype)
 
     edges = []
-    for id in data[drepr].keys():
+    for id in data['tree'].keys():
         if id > 1:
-            e = np.concatenate([data[drepr][id], data[drepr][int(id/2.)]]).astype(dtype=dtype)
+            e = np.concatenate([data['tree'][id], data['tree'][int(id/2.)]]).astype(dtype=dtype)
             edges.append(e)
 
     return root, edges
@@ -155,69 +152,10 @@ def print_progressbar(value, size=20, percent=True):
     print(bar_expr.format(bar_fill, value)),
 
 
-def computeslow_ATEP_kernel(X, Y=None, verbose=True):
-    is_symmetric = False
-    if Y is None:
-        Y = X
-        is_symmetric = True
-
-    # init the kernel
-    Kr = np.zeros((len(X), len(Y)), dtype=np.float32)  # root kernel
-    Ke = Kr.copy()                                                        # edges kernel
-
-    if verbose:
-        print('Computing %dx%d ATEP kernel ...\n' % (len(X), len(Y)))
-
-    # calculate the number of iterations to keep track of the kernel computation progress
-    ctr = 0
-    total = len(X) + (len(X) * len(X) - 1) / 2 if is_symmetric else len(X) * len(Y)
-
-    print_progressbar(ctr/float(total))
-    for i in range(0, len(X)):
-        ptr = i if is_symmetric else 0
-        for j in range(ptr, len(Y)):
-            # intersection between root histograms
-            Kr[i,j] = intersection(X[i][0], Y[j][0])
-
-            # pair-wise intersection of edges' histograms
-            sum_edges = 0.0
-            for edge_i in range(0, len(X[i][1])):
-                for edge_j in range(0, len(Y[j][1])):
-                    sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
-            Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
-
-            ctr += 1
-            print_progressbar(ctr/float(total))
-
-    if is_symmetric:
-        Kr += np.triu(Kr,1).T
-        Ke += np.triu(Ke,1).T
-
-    return Kr, Ke
-
-
-def ATEP_kernel(X, Y, points, tid=None, verbose=True):
-    Kr = np.zeros((len(X),len(Y)), dtype=np.float32)  # root kernel
-    Ke = Kr.copy()
-
-    for pid,(i,j) in enumerate(points):
-        if verbose:
-            print('[Parallel ATEP kernel] Thread %d, progress = %.1f%%]' % (tid,100.*(pid+1)/len(points)))
-        # intersection between root histograms
-        Kr[i,j] = intersection(X[i][0], Y[j][0])
-
-        # pair-wise intersection of edges' histograms
-        sum_edges = 0.0
-        for edge_i in range(0, len(X[i][1])):
-            for edge_j in range(0, len(Y[j][1])):
-                sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
-        Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
-
-    return Kr, Ke
-
-def parallel_ATEP_kernel(X, Y=None, nt=1, verbose=True):
+def ATEP_kernel(X, Y=None, nt=1, verbose=True):
     points = []
 
+    X = [(np.abs(Xr), np.abs(Xe)) for (Xr,Xe) in X]
     if Y is None:
         # generate combinations
         points += [(i,i) for i in xrange(len(X))]  # diagonal
@@ -225,6 +163,7 @@ def parallel_ATEP_kernel(X, Y=None, nt=1, verbose=True):
         is_symmetric = True
         Y = X
     else:
+        Y = [(np.abs(Yr), np.abs(Ye)) for (Yr,Ye) in Y]
         # generate product
         points += [ p for p in itertools.product(*[np.arange(len(X)),np.arange(len(Y))]) ]
         is_symmetric = False
@@ -235,9 +174,9 @@ def parallel_ATEP_kernel(X, Y=None, nt=1, verbose=True):
     step = np.int(np.floor(len(points)/nt)+1)
 
     shuffle(points)  # so all threads have similar workload
-    ret = Parallel(n_jobs=nt, backend='threading')(delayed(ATEP_kernel)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))], tid=i, verbose=True)
+    ret = Parallel(n_jobs=nt, backend='threading')(delayed(_ATEP_kernel)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))], tid=i, verbose=True)
                               for i in xrange(nt))
-
+    print 'here'
     # aggregate results of parallel computations
     Kr, Ke = ret[0][0], ret[0][1]
     for r in ret[1:]:
@@ -250,6 +189,36 @@ def parallel_ATEP_kernel(X, Y=None, nt=1, verbose=True):
         Ke += np.triu(Ke,1).T
 
     return Kr, Ke
+
+
+def _ATEP_kernel(X, Y, points, tid=None, verbose=True):
+    """
+    Compute the ATEP kernel.
+    :param X:
+    :param Y:
+    :param points: pairs of distances to compute among (i,j)-indexed rows of X and Y respectively.
+    :param tid: thread ID for verbosing purposes
+    :param verbose:
+    :return:
+    """
+    Kr = np.zeros((len(X),len(Y)), dtype=np.float32)  # root kernel
+    Ke = Kr.copy()
+
+    for pid,(i,j) in enumerate(points):
+        if verbose:
+            print('[Parallel ATEP kernel] Thread %d, progress = %.1f%%]' % (tid,100.*(pid+1)/len(points)))
+        # intersection between root histograms
+        Kr[i,j] = intersection(X[i][0], Y[j][0])
+
+        # pair-wise intersection of edges' histograms
+        sum_edges = 0.
+        for edge_i in range(0, len(X[i][1])):
+            for edge_j in range(0, len(Y[j][1])):
+                sum_edges += intersection(X[i][1][edge_i], Y[j][1][edge_j])
+        Ke[i,j] = sum_edges / (len(X[i][1]) * len(Y[j][1]))
+
+    return Kr, Ke
+
 
 def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, train_test_idx, c=[1], nl=1):
     '''
@@ -392,38 +361,23 @@ def _train_and_classify_binary(K_tr, K_te, train_labels, test_labels, c=1.0):
     return acc, ap
 
 
-def l1normalize(x):
-    return x / np.sum(np.abs(x))
-
-def l2normalize(x):
-    return x / np.sqrt(np.dot(x,x))
 
 def normalize_kernel(K, p=None):
     if p is None:
         p = 1. / float( np.median(K[K != 0]) )
     return p*K, p
 
-def intersection(x1, x2, beta=0.5):
+
+def intersection(x, y):
     '''
     Implements:
-        h(x,x') = \sum_j min(|{x_j/||x||_1}|^{\beta}, |{x_j/||x'||_1}|^{\beta})
+        h(x,x') = \sum_j min(|{x_j}|^{\beta}, |{y_j}|^{\beta})
     For more info, refer to:
         Eq(12) from Activity representation with motion hierarchies (A. Gaidon)
         Section 3.3 from Classification using Intersection Kernel Support Vector Machines is Efficent (S. Maji)
-    :param h1:
-    :param h2:
-    :param copy:
+    :param x: a 1-D vector
+    :param y: another 1-D vector
     :return:
     '''
 
-    xabs1 = np.abs(x1)
-    xabs2 = np.abs(x2)
-
-    xnorm1 = np.power(xabs1/np.sum(xabs1),beta)
-    xnorm2 = np.power(xabs2/np.sum(xabs2),beta)
-
-    min_inds = xnorm2 < xnorm1
-    xnorm1[min_inds] = xnorm2[min_inds]
-
-    return np.sum(xnorm1)
-
+    return np.minimum(x,y).sum()
