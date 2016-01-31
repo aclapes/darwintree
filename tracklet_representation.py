@@ -281,7 +281,8 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                         d = convert_positions_to_displacements(d)
 
                 # pre-processing
-                d = rootSIFT(d)  # scale (rootSIFT)
+                d = rootSIFT(preprocessing.normalize(d, norm='l1', axis=1))  # https://hal.inria.fr/hal-00873267v2/document
+
                 if pca_reduction:
                     d = cache[feat_t]['pca'].transform(d)  # reduce dimensionality
 
@@ -292,34 +293,33 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                 if not treelike:
                     # (in a per-frame representation)
                     fids = np.unique(obj[:,0])
-                    V = np.zeros((len(fids),len(v)), dtype=v.dtype)  # row-wise fisher vectors (matrix)
-                    for k, f in enumerate(fids):
+                    V = [] # row-wise fisher vectors (matrix)
+                    for f in fids:
                         tmp = d[np.where(obj[:,0] == f)[0],:]  # hopefully this is contiguous if d already was
-                        V[k,:] = ynumpy.fisher(cache[feat_t]['gmm'], tmp, include=INTERNAL_PARAMETERS['fv_repr_feats'])  # f-th frame fisher vec
-
-                    vd = videodarwin.darwin(V)
+                        fv = ynumpy.fisher(cache[feat_t]['gmm'], tmp, include=INTERNAL_PARAMETERS['fv_repr_feats'])  # f-th frame fisher vec
+                        V.append(fv)  # no normalization or nothing (it's done when computing darwin)
+                    vd = videodarwin.darwin(np.array(V))
 
                     with open(output_filepath, 'wb') as f:
-                        cPickle.dump(dict(v=vd, V=None), f)
+                        cPickle.dump(dict(v=vd), f)
 
                 else:  # or separately the FVs of the tree nodes
                     T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
-                    tree = dict()
-
+                    vdtree = dict()
                     for parent_idx, children_inds in T.iteritems():
                         # (in a per-frame representation)
                         node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
-                        fids = np.unique(obj[node_inds[0]:node_inds[-1],0])
-                        dim = INTERNAL_PARAMETERS['fv_gmm_k'] * len(INTERNAL_PARAMETERS['fv_repr_feats']) * d.shape[1]
-                        V = np.zeros((len(fids),dim), dtype=np.float32)
-                        for k, f in enumerate(fids):
-                            tmp = d[np.where(obj[node_inds[0]:node_inds[-1],0] == f)[0],:]
-                            V[k,:] = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])
-
-                        tree[parent_idx] = videodarwin.darwin(V)
+                        fids = np.unique(obj[node_inds,0])
+                        # dim = INTERNAL_PARAMETERS['fv_gmm_k'] * len(INTERNAL_PARAMETERS['fv_repr_feats']) * d.shape[1]
+                        V = []
+                        for f in fids:
+                            tmp = d[np.where(obj[node_inds,0] == f)[0],:]
+                            fv = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])
+                            V.append(fv)  # no normalization or nothing (it's done when computing darwin)
+                        vdtree[parent_idx] = videodarwin.darwin(np.array(V))
 
                     with open(output_filepath, 'wb') as f:
-                        cPickle.dump(dict(tree_global=tree, tree_perframe=None), f)
+                        cPickle.dump(dict(tree=vdtree), f)
 
             elapsed_time = time.time() - start_time
             print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))

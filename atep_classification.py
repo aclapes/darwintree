@@ -43,53 +43,54 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
 
         kernels_train = []
         kernels_test = []
-        for feat_t in feat_types:
-            train_filepath = join(feats_path, 'ATEP_train-' + feat_t + '-' + str(k) + '.pkl')
-            test_filepath = join(feats_path, 'ATEP_test-' + feat_t + '-' + str(k) + '.pkl')
-            if isfile(train_filepath) and isfile(test_filepath):
-                with open(train_filepath, 'rb') as f:
-                    data = cPickle.load(f)
-                    Kr_train, Ke_train = data['Kr_train'], data['Ke_train']
-                with open(test_filepath, 'rb') as f:
-                    data = cPickle.load(f)
-                    Kr_test, Ke_test = data['Kr_test'], data['Ke_test']
-            else:
-                trees = [None] * total
-                for i in xrange(total):
-                    input_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
-                    print input_filepath  # TODO: this is debug. get rid of this line ASAP
-                    try:
-                        with open(input_filepath) as f:
-                            root, edges = get_root_and_edges(cPickle.load(f), dtype=np.float32)
-                            trees[i] = [root, edges]
-                    except IOError:
-                        sys.stderr.write('# ERROR: missing training instance'
-                                         ' {}\n'.format(input_filepath))
-                        sys.stderr.flush()
-                        quit()
-
-                    trees = np.array(trees)
-
-                try:
+        for feat_p in feats_path:
+            for feat_t in feat_types:
+                train_filepath = join(feat_p, 'ATEP_train-' + feat_t + '-' + str(k) + '.pkl')
+                test_filepath = join(feat_p, 'ATEP_test-' + feat_t + '-' + str(k) + '.pkl')
+                if isfile(train_filepath) and isfile(test_filepath):
                     with open(train_filepath, 'rb') as f:
                         data = cPickle.load(f)
                         Kr_train, Ke_train = data['Kr_train'], data['Ke_train']
-                except IOError:
-                    Kr_train, Ke_train = ATEP_kernel(trees[train_inds], nt=nt)
-                    with open(train_filepath, 'wb') as f:
-                        cPickle.dump(dict(Kr_train=Kr_train, Ke_train=Ke_train), f)
-
-                try:
                     with open(test_filepath, 'rb') as f:
                         data = cPickle.load(f)
                         Kr_test, Ke_test = data['Kr_test'], data['Ke_test']
-                except IOError:
-                    Kr_test, Ke_test = ATEP_kernel(trees[test_inds], Y=trees[train_inds], nt=nt)
-                    with open(test_filepath, 'wb') as f:
-                        cPickle.dump(dict(Kr_test=Kr_test, Ke_test=Ke_test), f)
+                else:
+                    trees = [None] * total
+                    for i in xrange(total):
+                        input_filepath = join(feat_p, feat_t, videonames[i] + '-' + str(k) + '.pkl')
+                        print input_filepath  # TODO: this is debug. get rid of this line ASAP
+                        try:
+                            with open(input_filepath) as f:
+                                root, edges = get_root_and_edges(cPickle.load(f), dtype=np.float32)
+                                trees[i] = [root, edges]
+                        except IOError:
+                            sys.stderr.write('# ERROR: missing training instance'
+                                             ' {}\n'.format(input_filepath))
+                            sys.stderr.flush()
+                            quit()
 
-            kernels_train.append((Kr_train,Ke_train))
-            kernels_test.append((Kr_test,Ke_test))
+                        trees = np.array(trees)
+
+                    try:
+                        with open(train_filepath, 'rb') as f:
+                            data = cPickle.load(f)
+                            Kr_train, Ke_train = data['Kr_train'], data['Ke_train']
+                    except IOError:
+                        Kr_train, Ke_train = ATEP_kernel(trees[train_inds], nt=nt)
+                        with open(train_filepath, 'wb') as f:
+                            cPickle.dump(dict(Kr_train=Kr_train, Ke_train=Ke_train), f)
+
+                    try:
+                        with open(test_filepath, 'rb') as f:
+                            data = cPickle.load(f)
+                            Kr_test, Ke_test = data['Kr_test'], data['Ke_test']
+                    except IOError:
+                        Kr_test, Ke_test = ATEP_kernel(trees[test_inds], Y=trees[train_inds], nt=nt)
+                        with open(test_filepath, 'wb') as f:
+                            cPickle.dump(dict(Kr_test=Kr_test, Ke_test=Ke_test), f)
+
+                kernels_train.append((Kr_train,Ke_train))
+                kernels_test.append((Kr_test,Ke_test))
 
         results[k] = train_and_classify(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), c)
 
@@ -233,8 +234,9 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
     :return:
     '''
     # Assign weights to channels
-    if INTERNAL_PARAMETERS['weights'] is None: # if not specified a priori (when channels' specification)
-        feat_weights = [1.0/len(feat_types) for i in feat_types]
+    feat_weights = INTERNAL_PARAMETERS['weights']
+    if feat_weights is None: # if not specified a priori (when channels' specification)
+        feat_weights = [1.0/len(kernels_tr) for i in kernels_tr]
 
     tr_inds, te_inds = train_test_idx[0], train_test_idx[1]
     # lb = LabelBinarizer(neg_label=-1, pos_label=1)
@@ -254,7 +256,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
                 Kr_tr, _ = normalize_kernel(kernels_tr[0][0])
                 Ke_tr, _ = normalize_kernel(kernels_tr[0][1])
                 K_tr = feat_weights[0] * (a_i*Kr_tr + (1-a_i)*Ke_tr)
-                for i in range(1,len(feat_types)):
+                for i in range(1,len(kernels_tr)):
                     Kr_tr, _ = normalize_kernel(kernels_tr[i][0])
                     Ke_tr, _ = normalize_kernel(kernels_tr[i][1])
                     K_tr += feat_weights[i] * (a_i*Kr_tr + (1-a_i)*Ke_tr)
@@ -314,7 +316,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
         K_tr = feat_weights[0] * (a_best*Kr_tr + (1-a_best)*Ke_tr)
         K_te = feat_weights[0] * (a_best*Kr_te + (1-a_best)*Ke_te)
 
-        for i in range(1,len(feat_types)):
+        for i in range(1,len(kernels_tr)):
             Kr_tr, mr_tr = normalize_kernel(kernels_tr[i][0])
             Ke_tr, me_tr = normalize_kernel(kernels_tr[i][1])
             Kr_te, _ = normalize_kernel(kernels_te[i][0], p=mr_tr)
@@ -324,7 +326,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
             K_te += feat_weights[i] * (a_best*Kr_te + (1-a_best)*Ke_te)
 
         c_best = S[k][1]
-        acc, ap = _train_and_classify_binary(K_tr, K_te[te_msk], class_labels[tr_inds,k], class_labels[te_inds,k][te_msk], c_best)
+        acc, ap = _train_and_classify_binary(K_tr, K_te[te_msk], class_labels[tr_inds,k], class_labels[te_inds,k][te_msk], c=c_best)
 
         acc_classes.append(acc)
         ap_classes.append(ap)
@@ -333,13 +335,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
 
 
 def _train_and_classify_binary(K_tr, K_te, train_labels, test_labels, c=1.0):
-    # one_to_n = np.linspace(1,K_tr.shape[0],K_tr.shape[0])
-    # K_tr = np.hstack((one_to_n[:,np.newaxis], K_tr))
-    # one_to_n = np.linspace(1,K_te.shape[0],K_te.shape[0])
-    # K_te = np.hstack((one_to_n[:,np.newaxis], K_te))
-
     # Train
-    # clf = svm.SVC(kernel='precomputed', C=c_param, max_iter=-1, tol=1e-3)
     clf = svm.SVC(kernel='precomputed', class_weight='balanced', C=c, max_iter=-1, tol=1e-3, verbose=False)
     clf.fit(K_tr, train_labels)
 
@@ -355,8 +351,8 @@ def _train_and_classify_binary(K_tr, K_te, train_labels, test_labels, c=1.0):
     acc = (pos_acc + neg_acc) / 2.0
 
     # TODO: decide what is it
-    # ap = average_precision_score(test_labels, test_preds)
-    ap = average_precision_score(test_labels, test_scores)
+    ap = average_precision_score(test_labels, test_preds)
+    # ap = average_precision_score(test_labels, test_scores)
 
     return acc, ap
 
