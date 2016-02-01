@@ -5,16 +5,14 @@ import cPickle
 from os.path import join
 from os.path import isfile, exists
 from sklearn import svm
-from sklearn import preprocessing
-from sklearn.metrics import accuracy_score, average_precision_score, pairwise
-from os import makedirs
-import time
+from sklearn.metrics import average_precision_score
 from sklearn.cross_validation import StratifiedKFold
-from sklearn.preprocessing import LabelBinarizer
 import sys
 import itertools
 from joblib import delayed, Parallel
 from random import shuffle
+
+from tracklet_representation import get_root_and_edges
 
 # import matplotlib.pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D
@@ -43,7 +41,7 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
 
         kernels_train = []
         kernels_test = []
-        for feat_p in feats_path:
+        for feat_p in (feats_path if feats_path is list else [feats_path]):
             for feat_t in feat_types:
                 train_filepath = join(feat_p, 'ATEP_train-' + feat_t + '-' + str(k) + '.pkl')
                 test_filepath = join(feat_p, 'ATEP_test-' + feat_t + '-' + str(k) + '.pkl')
@@ -58,7 +56,6 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
                     trees = [None] * total
                     for i in xrange(total):
                         input_filepath = join(feat_p, feat_t, videonames[i] + '-' + str(k) + '.pkl')
-                        print input_filepath  # TODO: this is debug. get rid of this line ASAP
                         try:
                             with open(input_filepath) as f:
                                 root, edges = get_root_and_edges(cPickle.load(f), dtype=np.float32)
@@ -101,22 +98,6 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
 # ==============================================================================
 # Helper functions
 # ==============================================================================
-
-def get_root_and_edges(data, dtype=np.float32):
-    '''
-    A tree is a list of edges, with each edge as the concatenation of the repr. of parent and child nodes.
-    :param data:
-    :return root, edges:
-    '''
-    root = data['tree'][1].astype(dtype=dtype)
-
-    edges = []
-    for id in data['tree'].keys():
-        if id > 1:
-            e = np.concatenate([data['tree'][id], data['tree'][int(id/2.)]]).astype(dtype=dtype)
-            edges.append(e)
-
-    return root, edges
 
 
 def compute_intersection_kernel(bovw_tr, bovw_te=None):

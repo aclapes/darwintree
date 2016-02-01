@@ -45,6 +45,9 @@ def compute_vd_descriptors(tracklets_path, intermediates_path, videonames, train
     _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
                             pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
 
+def compute_node_evolution(feats_path, videonames, traintest_parts, feat_types, evolution_path):
+    _compute_node_evolution(feats_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, evolution_path)
+
 
 def compute_bovw_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
                                           pca_reduction=True, treelike=True, clusters_path=None):
@@ -63,6 +66,10 @@ def compute_vd_descriptors_multiprocess(tracklets_path, intermediates_path, vide
     inds = np.linspace(st, st+num_videos-1, num_videos)
     _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
                             pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+
+def compute_node_evolution_multiprocess(feats_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, evolution_path):
+    inds = np.linspace(st, st+num_videos-1, num_videos)
+    _compute_node_evolution(feats_path, videonames, traintest_parts, inds, feat_types, evolution_path)
 
 
 def compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
@@ -95,9 +102,20 @@ def compute_vd_descriptors_multithread(tracklets_path, intermediates_path, video
                                                                               pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
                                                      for i in xrange(nt))
 
+def compute_node_evolution_multithread(feats_path, videonames, traintest_parts, feat_types, evolution_path, \
+                                       nt=4):
+    inds = np.random.permutation(len(videonames))
+    step = np.int(np.floor(len(inds)/nt)+1)
+    Parallel(n_jobs=nt, backend='threading')(delayed(_compute_node_evolution)(feats_path, videonames, traintest_parts, \
+                                                                              inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
+                                                                              feat_types, evolution_path)
+                                                     for i in xrange(nt))
+
+
 # ==============================================================================
 # Main functions
 # ==============================================================================
+
 
 def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
                               pca_reduction=True, treelike=True, clusters_path=None):
@@ -462,9 +480,78 @@ def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, inter
             print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
 
 
+def _compute_node_evolution(feats_path, videonames, class_labels, traintest_parts, indices, feat_types, evolution_path):
+    if not exists(feats_path):
+        makedirs(feats_path)
+
+    for k, part in enumerate(traintest_parts):
+        # cach'd pca and gmm
+        cache = dict()
+        for j, feat_t in enumerate(feat_types):
+            if not exists(feats_path + feat_t):
+                makedirs(feats_path + feat_t)
+
+        # process videos
+        for i in indices:
+            # FV computed for all feature types? see the last in INTERNAL_PARAMETERS['feature_types']
+            output_filepath = join(evolution_path, feat_types[-1], videonames[i] + '-' + str(k) + '.pkl')
+            if isfile(output_filepath):
+                print('%s -> OK' % output_filepath)
+                continue
+
+            start_time = time.time()
+
+            for j, feat_t in enumerate(feat_types):
+                input_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
+                try:
+                    with open(input_filepath) as f:
+                        root, edges = get_root_and_edges(cPickle.load(f), dtype=np.float32)
+                except IOError:
+                    sys.stderr.write('# ERROR: missing training instance'
+                                     ' {}\n'.format(input_filepath))
+                    sys.stderr.flush()
+                    quit()
+
+                output_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
+
+                fvevo = []
+                for parent_idx, children_inds in T.iteritems():
+                    # (in a global representation)
+                    node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
+                    fv = ynumpy.fisher(cache[feat_t]['gmm'], d[node_inds,:], INTERNAL_PARAMETERS['fv_repr_feats'])  # fisher vec
+                    fvtree[parent_idx] = normalize(rootSIFT(fv,p=0.5), norm='l2')  # https://www.robots.ox.ac.uk/~vgg/rg/papers/peronnin_etal_ECCV10.pdf
+
+                with open(output_filepath, 'wb') as f:
+                    cPickle.dump(dict(nodes=fvevo), f)
+
+            elapsed_time = time.time() - start_time
+            print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
+
+
 # ==============================================================================
 # Helper functions
 # ==============================================================================
+
+def get_root_and_edges(data, dtype=np.float32):
+    '''
+    A tree is a list of edges, with each edge as the concatenation of the repr. of parent and child nodes.
+    :param data:
+    :return root, edges:
+    '''
+    root = data['tree'][1].astype(dtype=dtype)
+
+    edges = []
+    for id in data['tree'].keys():
+        if id > 1:
+            e = np.concatenate([data['tree'][id], data['tree'][int(id/2.)]]).astype(dtype=dtype)
+            edges.append(e)
+
+    return root, edges
+
+
+def get_path_backtrack():
+    raise NotImplementedError
+
 
 def convert_positions_to_displacements(P):
     '''
