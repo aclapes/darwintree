@@ -21,7 +21,7 @@ from sklearn import svm
 from sklearn.metrics import accuracy_score, average_precision_score
 
 import tracklet_extraction, tracklet_clustering, tracklet_representation
-import bovw_classification, atep_classification
+import bovw_classification, classification
 import darwintree
 # from videodarwin import darwin, normalizeL2
 
@@ -296,16 +296,16 @@ if __name__ == "__main__":
     c = [0.001, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000, 10000]
 
     st_time = time.time()
-    results = atep_classification.classify(feats_path + 'bovwtree/', videonames, class_labels, traintest_parts, \
-                                           np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
-                                           c=c)
+    results = classification.classify(feats_path + 'bovwtree/', videonames, class_labels, traintest_parts, \
+                                      np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
+                                      c=c)
     print('ATEP classification (bovwtree) took %.2f secs.' % (time.time() - st_time))
     print_results(results)
 
     st_time = time.time()
-    results = atep_classification.classify(feats_path + 'fvtree/', videonames, class_labels, traintest_parts, \
-                                           np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
-                                           c=c)
+    results = classification.classify(feats_path + 'fvtree/', videonames, class_labels, traintest_parts, \
+                                      np.linspace(0, 1, 11), INTERNAL_PARAMETERS['feature_types'], \
+                                      c=c)
     print('ATEP classification (bovwtree) took %.2f secs.' % (time.time() - st_time))
     print_results(results)
 
