@@ -480,7 +480,7 @@ def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, inter
             print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
 
 
-def _compute_node_evolution(feats_path, videonames, class_labels, traintest_parts, indices, feat_types, evolution_path):
+def _compute_node_evolution(feats_path, videonames, traintest_parts, indices, feat_types, evolution_path):
     if not exists(feats_path):
         makedirs(feats_path)
 
@@ -505,24 +505,32 @@ def _compute_node_evolution(feats_path, videonames, class_labels, traintest_part
                 input_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
                 try:
                     with open(input_filepath) as f:
-                        root, edges = get_root_and_edges(cPickle.load(f), dtype=np.float32)
+                        data = cPickle.load(f)
                 except IOError:
                     sys.stderr.write('# ERROR: missing training instance'
                                      ' {}\n'.format(input_filepath))
                     sys.stderr.flush()
                     quit()
 
-                output_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
+                output_filepath = join(evolution_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
 
-                fvevo = []
-                for parent_idx, children_inds in T.iteritems():
-                    # (in a global representation)
-                    node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
-                    fv = ynumpy.fisher(cache[feat_t]['gmm'], d[node_inds,:], INTERNAL_PARAMETERS['fv_repr_feats'])  # fisher vec
-                    fvtree[parent_idx] = normalize(rootSIFT(fv,p=0.5), norm='l2')  # https://www.robots.ox.ac.uk/~vgg/rg/papers/peronnin_etal_ECCV10.pdf
+                fvdarwinpathtree = dict()
+                # do the rest
+                for (id_i, x) in data['tree'].iteritems():
+                    if id_i == 1:
+                        fvdarwinpathtree[1] = data['tree'][1].astype(dtype=np.float32)  # copy root
+                    else:
+                        X = []
+
+                        id_j = id_i
+                        while id_j > 0:
+                            X.append(data['tree'][id_j])
+                            id_j /= 2
+
+                        fvdarwinpathtree[id_i] = (x, videodarwin.darwin(np.array(X, dtype=np.float32))
 
                 with open(output_filepath, 'wb') as f:
-                    cPickle.dump(dict(nodes=fvevo), f)
+                    cPickle.dump(dict(tree=fvdarwinpathtree), f)
 
             elapsed_time = time.time() - start_time
             print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))

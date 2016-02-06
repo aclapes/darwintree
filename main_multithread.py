@@ -294,20 +294,22 @@ if __name__ == "__main__":
         #                                                              pca_reduction=False, treelike=True, clusters_path=clusters_path)
         st_time = time.time()
         results = atep_classification.classify(feats_path + 'bovwtree/', videonames, class_labels, traintest_parts, \
-                                               np.linspace(0, 1, 11), xml_config['features_list'], c=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
+                                               np.linspace(0, 1, 11), xml_config['features_list'], \
+                                               c=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
         print('ATEP classification (bovwtree) took %.2f secs.' % (time.time() - st_time))
         print_results(results)
 
     # FV-tree descriptor computation and classification
     if 'atep_fvtree' in xml_config['methods_list']:
-        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path)
-        tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+        # tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path)
+        tracklet_representation.compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                    feats_path + 'fvtree/', \
                                                                    treelike=True, clusters_path=clusters_path)
 
         st_time = time.time()
         results = atep_classification.classify(feats_path + 'fvtree/', videonames, class_labels, traintest_parts, \
-                                               np.linspace(0, 1, 11), xml_config['features_list'], c=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
+                                               np.linspace(0, 1, 11), xml_config['features_list'], \
+                                               c=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
         print('ATEP classification (fvtree) took %.2f secs.' % (time.time() - st_time))
         print_results(results)
 
@@ -319,7 +321,7 @@ if __name__ == "__main__":
         #                                                            treelike=True, clusters_path=clusters_path)
         st_time = time.time()
         results = atep_classification.classify(feats_path + 'darwintree/', videonames, class_labels, traintest_parts, \
-                                               np.linspace(0, 1, 11), xml_config['features_list'], c=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
+                                               np.linspace(0, 1, 11), xml_config['features_list'], c=[0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
         print('ATEP classification (darwintree) took %.2f secs.' % (time.time() - st_time))
         print_results(results)
 
@@ -333,11 +335,11 @@ if __name__ == "__main__":
         #                                                            treelike=True, clusters_path=clusters_path)
         st_time = time.time()
         results = atep_classification.classify([feats_path + 'fvtree', feats_path + 'darwintree/'], videonames, class_labels, traintest_parts, \
-                                               np.linspace(0, 1, 11), xml_config['features_list'], c=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
+                                               np.linspace(0, 1, 11), xml_config['features_list'], c=[0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
         print('ATEP classification (darwintree) took %.2f secs.' % (time.time() - st_time))
         print_results(results)
 
-    if 'acp_fvevo' in xml_config['methods_list']:
+    if 'atep_fvdpathtree' in xml_config['methods_list']:
         # tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path)
         # tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
         #                                                            feats_path + 'fvtree/', \

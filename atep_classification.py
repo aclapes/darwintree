@@ -41,7 +41,7 @@ def classify(feats_path, videonames, class_labels, traintest_parts, a, feat_type
 
         kernels_train = []
         kernels_test = []
-        for feat_p in (feats_path if feats_path is list else [feats_path]):
+        for feat_p in (feats_path if type(feats_path) is list else [feats_path]):
             for feat_t in feat_types:
                 train_filepath = join(feat_p, 'ATEP_train-' + feat_t + '-' + str(k) + '.pkl')
                 test_filepath = join(feat_p, 'ATEP_test-' + feat_t + '-' + str(k) + '.pkl')
@@ -202,7 +202,7 @@ def _ATEP_kernel(X, Y, points, tid=None, verbose=True):
     return Kr, Ke
 
 
-def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, train_test_idx, c=[1], nl=1):
+def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, train_test_idx, c=[1], nl=2):
     '''
 
     :param kernels_tr:
@@ -258,7 +258,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
                             c_j)
                         # TODO: decide what it is
                         Rval_ap[k,i,j] += acc_tmp/skf.n_folds
-                        # Rval_ap[k,i,j] += (ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
+                        Rval_ap[k,i,j] += (ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
 
             a_bidx, c_bidx = np.unravel_index(Rval_ap[k].argmax(), Rval_ap[k].shape)  # a and c bests' indices
             S[k] = (C[k][0][a_bidx], C[k][1][c_bidx])
@@ -332,8 +332,8 @@ def _train_and_classify_binary(K_tr, K_te, train_labels, test_labels, c=1.0):
     acc = (pos_acc + neg_acc) / 2.0
 
     # TODO: decide what is it
-    ap = average_precision_score(test_labels, test_preds)
-    # ap = average_precision_score(test_labels, test_scores)
+    # ap = average_precision_score(test_labels, test_preds)
+    ap = average_precision_score(test_labels, test_scores)
 
     return acc, ap
 
