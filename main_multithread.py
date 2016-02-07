@@ -66,7 +66,7 @@ def get_global_config(xml_config):
     :param xml_config:
     :return:
     """
-    parent_path = xml_config['home_path'] + xml_config['data_path'] + xml_config['dataset_name'] + '/'
+    parent_path = xml_config['data_path'] + xml_config['dataset_name'] + '/'
     if not isdir(parent_path):
         makedirs(parent_path)
 
@@ -86,7 +86,7 @@ def get_dataset_info(xml_config):
     :return:
     """
     dataset_name = xml_config['dataset_name']
-    dataset_path = xml_config['home_path'] + xml_config['datasets_path'] + dataset_name + '/'
+    dataset_path = xml_config['datasets_path'] + dataset_name + '/'
 
     if dataset_name == 'hollywood2':
         dataset_info = get_hollywood2_config(dataset_path)
@@ -298,14 +298,25 @@ if __name__ == "__main__":
         print('ATEP classification (bovwtree) took %.2f secs.' % (time.time() - st_time))
         print_results(results)
 
-    if 'atbep_fvtree' in xml_config['methods_list']:
+    if 'atep_fvtree' in xml_config['methods_list']:
         # tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False)
         # tracklet_representation.compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
         #                                                              feats_path + 'bovwtree/', \
         #                                                              pca_reduction=False, treelike=True, clusters_path=clusters_path)
         st_time = time.time()
-        kernels = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'])
-        results = classification.classify(kernels, class_labels, traintest_parts, np.linspace(0, 1, 11), xml_config['features_list'], c=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
+        atep = kernels.compute_ATEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'])
+        results = classification.classify(atep, class_labels, traintest_parts, np.linspace(0, 1, 11), xml_config['features_list'], c=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
+        print('ATEP classification (fvtree) took %.2f secs.' % (time.time() - st_time))
+        print_results(results)
+
+    if 'atnbep_fvtree' in xml_config['methods_list']:
+        # tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False)
+        # tracklet_representation.compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+        #                                                              feats_path + 'bovwtree/', \
+        #                                                              pca_reduction=False, treelike=True, clusters_path=clusters_path)
+        st_time = time.time()
+        atnbep = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'])
+        results = classification.classify(atnbep, class_labels, traintest_parts, np.linspace(0, 1, 11), xml_config['features_list'], c=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
         print('ATBEP classification (fvtree) took %.2f secs.' % (time.time() - st_time))
         print_results(results)
 
