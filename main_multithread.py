@@ -315,7 +315,7 @@ if __name__ == "__main__":
         #                                                              feats_path + 'bovwtree/', \
         #                                                              pca_reduction=False, treelike=True, clusters_path=clusters_path)
         st_time = time.time()
-        atnbep = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'])
+        atnbep = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], from_disk=False)
         results = classification.classify(atnbep, class_labels, traintest_parts, np.linspace(0, 1, 11), xml_config['features_list'], c=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 1e4, 1e5, 1e6])
         print('ATBEP classification (fvtree) took %.2f secs.' % (time.time() - st_time))
         print_results(results)
