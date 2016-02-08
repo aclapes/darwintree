@@ -337,18 +337,18 @@ def intersection_kernel(X, Y=None, nt=1, verbose=True):
     X['root'], X['nodes'] = np.abs(X['root']), [np.abs(np.array(x)) for x in X['nodes']]
     if Y is None:
         # generate combinations
-        points += [(i,i) for i in xrange(len(X))]  # diagonal
-        points += [p for p in itertools.combinations(np.arange(len(X)),2)]  # upper-triangle combinations
+        points += [(i,i) for i in xrange(len(X['root']))]  # diagonal
+        points += [p for p in itertools.combinations(np.arange(len(X['root'])),2)]  # upper-triangle combinations
         is_symmetric = True
         Y = X
     else:
         Y['root'], Y['nodes'] = np.abs(Y['root']), [np.abs(np.array(y)) for y in Y['nodes']]
         # generate product
-        points += [ p for p in itertools.product(*[np.arange(len(X)),np.arange(len(Y))]) ]
+        points += [ p for p in itertools.product(*[np.arange(len(X['root'])),np.arange(len(Y['root']))]) ]
         is_symmetric = False
 
     if verbose:
-        print('Computing fast %dx%d intersection kernel ...\n' % (len(X),len(Y)))
+        print('Computing fast %dx%d intersection kernel ...\n' % (len(X['root']),len(Y['root'])))
 
     step = np.int(np.floor(len(points)/nt)+1)
 
@@ -381,7 +381,7 @@ def _intersection_kernel(input_path, videonames, X, Y, points, tid=None, verbose
     :return:
     """
     Kr = np.zeros((len(X),len(Y)), dtype=np.float32)  # root kernel
-    Ke = Kr.copy()
+    Kn = Kr.copy()
 
     sorted_points = sorted(points)  # sort set of points using the i-th index
     prev_i = -1
@@ -403,13 +403,13 @@ def _intersection_kernel(input_path, videonames, X, Y, points, tid=None, verbose
         Kr[i,j] = np.minimum(Di['root'], Dj['root']).sum()
 
         # pair-wise intersection of edges' histograms
-        sum_edges = 0.
-        for edge_i in xrange(len(Di['nodes'])):
-            for edge_j in xrange(len(Dj['nodes'])):
-                sum_edges += np.minimum(Di['nodes'][edge_i], Dj['nodes'][edge_j]).sum()
-        Ke[i,j] = sum_edges / (len(Di['nodes']) * len(Dj['nodes']))
+        sum_nodes = 0.
+        for node_i in xrange(len(Di['nodes'])):
+            for node_j in xrange(len(Dj['nodes'])):
+                sum_nodes += np.minimum(Di['nodes'][node_i], Dj['nodes'][node_j]).sum()
+        Kn[i,j] = sum_nodes / (len(Di['nodes']) * len(Dj['nodes']))
 
-    return Kr, Ke
+    return Kr, Kn
 
 def _intersection_kernel(X, Y, points, tid=None, verbose=True):
     """
@@ -422,21 +422,19 @@ def _intersection_kernel(X, Y, points, tid=None, verbose=True):
     :return:
     """
     Kr = np.zeros((len(X['root']),len(Y['root'])), dtype=np.float32)  # root kernel
-    Ke = Kr.copy()
+    Kn = Kr.copy()
 
-    sorted_points = sorted(points)  # sort set of points using the i-th index
-    prev_i = -1
-    for pid,(i,j) in enumerate(sorted_points):
+    for pid,(i,j) in enumerate(points):
         if verbose:
             print('[Parallel intersection kernel] Thread %d, progress = %.1f%%]' % (tid,100.*(pid+1)/len(points)))
 
         Kr[i,j] = np.minimum(X['root'][i], Y['root'][j]).sum()
 
         # pair-wise intersection of edges' histograms
-        sum_edges = 0.
-        for edge_i in xrange(len(X['nodes'][i])):
-            for edge_j in xrange(len(Y['nodes'][j])):
-                sum_edges += np.minimum(X['nodes'][i][edge_i], Y['nodes'][j][edge_j]).sum()
-        Ke[i,j] = sum_edges / (len(X['nodes'][i]) * len(Y['nodes'][j]))
+        sum_nodes = 0.
+        for node_i in xrange(len(X['nodes'][i])):
+            for node_j in xrange(len(Y['nodes'][j])):
+                sum_nodes += np.minimum(X['nodes'][i][node_i], Y['nodes'][j][node_j]).sum()
+        Kn[i,j] = sum_nodes / (len(X['nodes'][i]) * len(Y['nodes'][j]))
 
-    return Kr, Ke
+    return Kr, Kn
