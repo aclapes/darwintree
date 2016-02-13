@@ -14,6 +14,7 @@ from joblib import delayed, Parallel
 from random import shuffle
 
 import videodarwin
+from tracklet_representation import normalize
 
 def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, nt=4, from_disk=False):
     """
@@ -40,6 +41,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, nt
                     with open(train_filepath, 'rb') as f:
                         data = cPickle.load(f)
                         Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
+
                     with open(test_filepath, 'rb') as f:
                         data = cPickle.load(f)
                         Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
@@ -289,7 +291,7 @@ def construct_branch_evolutions(data, dtype=np.float32):
             w = videodarwin.darwin(np.array(X, dtype=np.float32))
 
             # build the node representation its representation itself + the videodarwin of the path
-            b = np.concatenate([x,w]).astype(dtype=dtype)
+            b = np.concatenate([x,normalize(w,norm='l2')]).astype(dtype=dtype)
             branches.append(b)
 
     return root, branches

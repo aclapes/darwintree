@@ -111,7 +111,7 @@ def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, tr
         cache = dict()
         for j, feat_t in enumerate(feat_types):
             if not exists(feats_path + feat_t):
-                makedirs(feats_path + feat_t)
+                makedirs(feats_path + feat_t + '-' + str(k))
             with open(intermediates_path + 'bovw' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
                 cache[feat_t] = cPickle.load(f)
 
@@ -121,7 +121,7 @@ def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, tr
             # FV computed for all feature types? see
             # the last in INTERNAL_PARAMETERS['feature_types']
             for feat_t in feat_types:
-                output_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
+                output_filepath = join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl')
                 if isfile(output_filepath):
                     print('%s -> OK' % output_filepath)
                     continue
@@ -180,7 +180,7 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
         cache = dict()
         for j, feat_t in enumerate(feat_types):
             if not exists(feats_path + feat_t):
-                makedirs(feats_path + feat_t)
+                makedirs(feats_path + feat_t + '-' + str(k))
             with open(intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
                 cache[feat_t] = cPickle.load(f)
 
@@ -218,7 +218,7 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
 
                 d = np.ascontiguousarray(d, dtype=np.float32)  # required in many of Yael functions
 
-                output_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
+                output_filepath = join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl')
                 # compute FV of the video
                 if not treelike:
                     fv = ynumpy.fisher(cache[feat_t]['gmm'], d, INTERNAL_PARAMETERS['fv_repr_feats'])  # fisher vec
@@ -252,7 +252,7 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
         cache = dict()
         for j, feat_t in enumerate(feat_types):
             if not exists(feats_path + feat_t):
-                makedirs(feats_path + feat_t)
+                makedirs(feats_path + feat_t + '-' + str(k))
             with open(intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
                 cache[feat_t] = cPickle.load(f)
 
@@ -290,7 +290,7 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
 
                 d = np.ascontiguousarray(d, dtype=np.float32)  # required in many of Yael functions
 
-                output_filepath = join(feats_path, feat_t, videonames[i] + '-' + str(k) + '.pkl')
+                output_filepath = join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl')
                 # compute FV of the video
                 if not treelike:
                     # (in a per-frame representation)
@@ -300,7 +300,8 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                         tmp = d[np.where(obj[:,0] == f)[0],:]  # hopefully this is contiguous if d already was
                         fv = ynumpy.fisher(cache[feat_t]['gmm'], tmp, include=INTERNAL_PARAMETERS['fv_repr_feats'])  # f-th frame fisher vec
                         V.append(fv)  # no normalization or nothing (it's done when computing darwin)
-                    vd = videodarwin.darwin(np.array(V))
+
+                    vd = normalize(videodarwin.darwin(np.array(V)), norm='l2')
 
                     with open(output_filepath, 'wb') as f:
                         cPickle.dump(dict(v=vd), f)
@@ -318,7 +319,7 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                             tmp = d[np.where(obj[node_inds,0] == f)[0],:]
                             fv = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])
                             V.append(fv)  # no normalization or nothing (it's done when computing darwin)
-                        vdtree[parent_idx] = videodarwin.darwin(np.array(V))
+                        vdtree[parent_idx] = normalize(videodarwin.darwin(np.array(V)), norm='l2')
 
                     with open(output_filepath, 'wb') as f:
                         cPickle.dump(dict(tree=vdtree), f)
