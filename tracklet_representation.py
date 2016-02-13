@@ -110,7 +110,7 @@ def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, tr
         # cach'd pca and gmm
         cache = dict()
         for j, feat_t in enumerate(feat_types):
-            if not exists(feats_path + feat_t):
+            if not exists(feats_path + feat_t + '-' + str(k)):
                 makedirs(feats_path + feat_t + '-' + str(k))
             with open(intermediates_path + 'bovw' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
                 cache[feat_t] = cPickle.load(f)
@@ -179,7 +179,7 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
         # cach'd pca and gmm
         cache = dict()
         for j, feat_t in enumerate(feat_types):
-            if not exists(feats_path + feat_t):
+            if not exists(feats_path + feat_t + '-' + str(k)):
                 makedirs(feats_path + feat_t + '-' + str(k))
             with open(intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
                 cache[feat_t] = cPickle.load(f)
@@ -251,7 +251,7 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
         # cach'd pca and gmm
         cache = dict()
         for j, feat_t in enumerate(feat_types):
-            if not exists(feats_path + feat_t):
+            if not exists(feats_path + feat_t + '-' + str(k)):
                 makedirs(feats_path + feat_t + '-' + str(k))
             with open(intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
                 cache[feat_t] = cPickle.load(f)
