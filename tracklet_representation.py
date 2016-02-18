@@ -121,7 +121,7 @@ def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, tr
             # FV computed for all feature types? see
             # the last in INTERNAL_PARAMETERS['feature_types']
             for feat_t in feat_types:
-                output_filepath = join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl')
+                output_filepath = join(feats_path, feat_types[-1] + '-' + str(k), videonames[i] + '.pkl')
                 if isfile(output_filepath):
                     print('%s -> OK' % output_filepath)
                     continue
@@ -188,7 +188,7 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
         total = len(videonames)
         for i in indices:
             # FV computed for all feature types? see the last in INTERNAL_PARAMETERS['feature_types']
-            output_filepath = feats_path + feat_types[-1] + '/' + videonames[i] + '-' + str(k) + '.pkl'
+            output_filepath = join(feats_path, feat_types[-1] + '-' + str(k), videonames[i] + '.pkl')
             if isfile(output_filepath):
                 # for j, feat_t in enumerate(feat_types):
                 #     featnames.setdefault(feat_t, []).append(feats_path + feat_t + '/' + videonames[i] + '-fvtree.pkl')
@@ -260,7 +260,7 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
         total = len(videonames)
         for i in indices:
             # FV computed for all feature types? see the last in INTERNAL_PARAMETERS['feature_types']
-            output_filepath = feats_path + feat_types[-1] + '/' + videonames[i] + '-' + str(k) + '.pkl'
+            output_filepath = join(feats_path, feat_types[-1] + '-' + str(k), videonames[i] + '.pkl')
             if isfile(output_filepath):
                 # for j, feat_t in enumerate(feat_types):
                 #     featnames.setdefault(feat_t, []).append(feats_path + feat_t + '/' + videonames[i] + '-fvtree.pkl')

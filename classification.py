@@ -57,7 +57,7 @@ def classify(kernels, class_labels, traintest_parts, a, feat_types, c=[1]):
 #     print(bar_expr.format(bar_fill, value)),
 
 
-def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, train_test_idx, c=[1], nl=2):
+def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, train_test_idx, c=[1], nl=1):
     '''
 
     :param kernels_tr:
@@ -113,7 +113,7 @@ def train_and_classify(kernels_tr, kernels_te, a, feat_types, class_labels, trai
                             c_j)
                         # TODO: decide what it is
                         Rval_ap[k,i,j] += acc_tmp/skf.n_folds
-                        Rval_ap[k,i,j] += (ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
+                        # Rval_ap[k,i,j] += (ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
 
             a_bidx, c_bidx = np.unravel_index(Rval_ap[k].argmax(), Rval_ap[k].shape)  # a and c bests' indices
             S[k] = (C[k][0][a_bidx], C[k][1][c_bidx])

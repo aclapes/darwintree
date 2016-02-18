@@ -16,7 +16,8 @@ from random import shuffle
 import videodarwin
 from tracklet_representation import normalize
 
-def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, nt=4, from_disk=False):
+def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
+                         nt=4, use_disk=False):
     """
     Compute All Tree Node Branch Evolution Pairs.
     :param feats_path:
@@ -33,205 +34,164 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, nt
         total = len(videonames)
 
         kernels = dict()
-        for feat_p in (feats_path if type(feats_path) is list else [feats_path]):
-            for feat_t in feat_types:
-                train_filepath = join(feat_p, 'ATEP_train-' + feat_t + '-' + str(k) + '.pkl')
-                test_filepath = join(feat_p, 'ATEP_test-' + feat_t + '-' + str(k) + '.pkl')
-                if isfile(train_filepath) and isfile(test_filepath):
+        for feat_t in feat_types:
+            train_filepath = join(kernels_output_path, 'train-' + feat_t + '-' + str(k) + '.pkl')
+            test_filepath = join(kernels_output_path, 'test-' + feat_t + '-' + str(k) + '.pkl')
+            if isfile(train_filepath) and isfile(test_filepath):
+                with open(train_filepath, 'rb') as f:
+                    data = cPickle.load(f)
+                    Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
+
+                with open(test_filepath, 'rb') as f:
+                    data = cPickle.load(f)
+                    Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
+            else:
+                kernel_repr_path = join(kernels_output_path, feat_t + '-' + str(k))
+                if not exists(kernel_repr_path):
+                    makedirs(kernel_repr_path)
+
+                Parallel(n_jobs=nt, backend='threading')(delayed(construct_edge_pairs)(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
+                                                                                       join(kernel_repr_path, videonames[i] + '.pkl'))
+                                                         for i in xrange(total))
+
+                try:
                     with open(train_filepath, 'rb') as f:
                         data = cPickle.load(f)
                         Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
-
-                    with open(test_filepath, 'rb') as f:
-                        data = cPickle.load(f)
-                        Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
-                else:
-                    kernel_repr_path = join(feat_p, feat_t + '-atep-' + str(k))
-                    if not exists(kernel_repr_path):
-                        makedirs(kernel_repr_path)
-
-                    Parallel(n_jobs=nt, backend='threading')(delayed(construct_kernel_input_representations)(construct_edge_pairs, \
-                                                                                                             join(feat_p, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
-                                                                                                             join(kernel_repr_path, videonames[i] + '.pkl'))
-                                                             for i in xrange(total))
-
-                    try:
-                        with open(train_filepath, 'rb') as f:
-                            data = cPickle.load(f)
-                            Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
-                    except IOError:
+                except IOError:
+                    if use_disk:
                         Kr_train, Kn_train = intersection_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
-                        with open(train_filepath, 'wb') as f:
-                            cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
+                    else:
+                        D_train = dict()
+                        for i in train_inds:
+                            with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
+                                Di = cPickle.load(f)
+                            D_train.setdefault('root',[]).append(Di['root'])
+                            D_train.setdefault('nodes',[]).append(Di['nodes'])
+                        Kr_train, Kn_train = intersection_kernel(D_train, nt=nt)
+                    with open(train_filepath, 'wb') as f:
+                        cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
 
-                    try:
-                        with open(test_filepath, 'rb') as f:
-                            data = cPickle.load(f)
-                            Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
-                    except IOError:
-                        Kr_test, Kn_test = intersection_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
-                        with open(test_filepath, 'wb') as f:
-                            cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
-
-                kernels.setdefault('train',[]).append((Kr_train,Kn_train))
-                kernels.setdefault('test', []).append((Kr_test,Kn_test))
-
-    return kernels
-
-# def compute_ATEP(feats_path, videonames, traintest_parts, feat_types, nt=4):
-#     """
-#     Compute All Tree Edge Pairs.
-#     :param feats_path:
-#     :param videonames:
-#     :param traintest_parts:
-#     :param feat_types:
-#     :param nt:
-#     :return:
-#     """
-#     results = [None] * len(traintest_parts)
-#     for k, part in enumerate(traintest_parts):
-#         train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
-#         # process videos
-#         total = len(videonames)
-#
-#         kernels = dict()
-#         for feat_p in (feats_path if type(feats_path) is list else [feats_path]):
-#             for feat_t in feat_types:
-#                 train_filepath = join(feat_p, 'ATEP_train-' + feat_t + '-' + str(k) + '.pkl')
-#                 test_filepath = join(feat_p, 'ATEP_test-' + feat_t + '-' + str(k) + '.pkl')
-#                 if isfile(train_filepath) and isfile(test_filepath):
-#                     with open(train_filepath, 'rb') as f:
-#                         data = cPickle.load(f)
-#                         Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
-#                     with open(test_filepath, 'rb') as f:
-#                         data = cPickle.load(f)
-#                         Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
-#                 else:
-#                     trees = [None] * total
-#                     for i in xrange(total):
-#                         input_filepath = join(feat_p, feat_t, videonames[i] + '-' + str(k) + '.pkl')
-#                         try:
-#                             with open(input_filepath) as f:
-#                                 data = cPickle.load(f)
-#                                 root, nodes = construct_edge_pairs(data, dtype=np.float32)
-#                                 trees[i] = [root, nodes]
-#                         except IOError:
-#                             sys.stderr.write('# ERROR: missing training instance'
-#                                              ' {}\n'.format(input_filepath))
-#                             sys.stderr.flush()
-#                             quit()
-#
-#                         trees = np.array(trees)
-#
-#                     try:
-#                         with open(train_filepath, 'rb') as f:
-#                             data = cPickle.load(f)
-#                             Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
-#                     except IOError:
-#                         Kr_train, Kn_train = intersection_kernel(trees[train_inds], nt=nt)
-#                         with open(train_filepath, 'wb') as f:
-#                             cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
-#
-#                     try:
-#                         with open(test_filepath, 'rb') as f:
-#                             data = cPickle.load(f)
-#                             Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
-#                     except IOError:
-#                         Kr_test, Kn_test = intersection_kernel(trees[test_inds], Y=trees[train_inds], nt=nt)
-#                         with open(test_filepath, 'wb') as f:
-#                             cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
-#
-#                 kernels.setdefault('train',[]).append((Kr_train,Kn_train))
-#                 kernels.setdefault('test', []).append((Kr_test,Kn_test))
-#
-#     return kernels
-
-def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, nt=4, from_disk=False):
-    """
-    Compute All Tree Node Branch Evolution Pairs.
-    :param feats_path:
-    :param videonames:
-    :param traintest_parts:
-    :param feat_types:
-    :param nt:
-    :return:
-    """
-    results = [None] * len(traintest_parts)
-    for k, part in enumerate(traintest_parts):
-        train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
-
-        total = len(videonames)
-
-        kernels = dict()
-        for feat_p in (feats_path if type(feats_path) is list else [feats_path]):
-            for feat_t in feat_types:
-                train_filepath = join(feat_p, 'ATNBEP_train-' + feat_t + '-' + str(k) + '.pkl')
-                test_filepath = join(feat_p, 'ATNBEP_test-' + feat_t + '-' + str(k) + '.pkl')
-                if isfile(train_filepath) and isfile(test_filepath):
-                    with open(train_filepath, 'rb') as f:
-                        data = cPickle.load(f)
-                        Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
+                try:
                     with open(test_filepath, 'rb') as f:
                         data = cPickle.load(f)
                         Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
-                else:
-                    kernel_repr_path = join(feat_p, feat_t + '-atnbep-' + str(k))
-                    if not exists(kernel_repr_path):
-                        makedirs(kernel_repr_path)
-
-                    Parallel(n_jobs=nt, backend='threading')(delayed(construct_kernel_input_representations)(construct_branch_evolutions, \
-                                                                                                             join(feat_p, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
-                                                                                                             join(kernel_repr_path, videonames[i] + '.pkl'))
-                                                                   for i in xrange(total))
-
-                    try:
-                        with open(train_filepath, 'rb') as f:
-                            data = cPickle.load(f)
-                            Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
-                    except IOError:
-                        if from_disk:
-                            Kr_train, Kn_train = intersection_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
-                        else:
+                except IOError:
+                    if use_disk:
+                        Kr_test, Kn_test = intersection_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                    else:
+                        if not 'D_train' in locals():
                             D_train = dict()
                             for i in train_inds:
                                 with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
                                     Di = cPickle.load(f)
                                 D_train.setdefault('root',[]).append(Di['root'])
                                 D_train.setdefault('nodes',[]).append(Di['nodes'])
-                            Kr_train, Kn_train = intersection_kernel(D_train, nt=nt)
-                        with open(train_filepath, 'wb') as f:
-                            cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
 
-                    try:
-                        with open(test_filepath, 'rb') as f:
-                            data = cPickle.load(f)
-                            Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
-                    except IOError:
-                        if from_disk:
-                            Kr_test, Kn_test = intersection_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
-                        else:
-                            if not 'D_train' in locals():
-                                D_train = dict()
-                                for i in train_inds:
-                                    with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
-                                        Di = cPickle.load(f)
-                                    D_train.setdefault('root',[]).append(Di['root'])
-                                    D_train.setdefault('nodes',[]).append(Di['nodes'])
+                        D_test = dict()
+                        for i in test_inds:
+                            with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
+                                Di = cPickle.load(f)
+                            D_test.setdefault('root',[]).append(Di['root'])
+                            D_test.setdefault('nodes',[]).append(Di['nodes'])
 
-                            D_test = dict()
-                            for i in test_inds:
+                        Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, nt=nt)
+
+                    with open(test_filepath, 'wb') as f:
+                        cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
+
+            kernels.setdefault('train',[]).append((Kr_train,Kn_train))
+            kernels.setdefault('test', []).append((Kr_test,Kn_test))
+
+    return kernels
+
+
+def compute_ATNBEP_kernels(node_feats_path, branch_feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
+                           nt=4, use_disk=False):
+    """
+    Compute All Tree Node Branch Evolution Pairs.
+    :param feats_path:
+    :param videonames:
+    :param traintest_parts:
+    :param feat_types:
+    :param nt:
+    :return:
+    """
+    results = [None] * len(traintest_parts)
+    for k, part in enumerate(traintest_parts):
+        train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
+
+        total = len(videonames)
+
+        kernels = dict()
+        for feat_t in feat_types:
+            train_filepath = join(kernels_output_path, 'train-' + feat_t + '-' + str(k) + '.pkl')
+            test_filepath = join(kernels_output_path, 'test-' + feat_t + '-' + str(k) + '.pkl')
+            if isfile(train_filepath) and isfile(test_filepath):
+                with open(train_filepath, 'rb') as f:
+                    data = cPickle.load(f)
+                    Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
+                with open(test_filepath, 'rb') as f:
+                    data = cPickle.load(f)
+                    Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
+            else:
+                kernel_repr_path = join(kernels_output_path, feat_t + '-' + str(k))
+                if not exists(kernel_repr_path):
+                    makedirs(kernel_repr_path)
+
+                Parallel(n_jobs=nt, backend='threading')(delayed(construct_branch_evolutions)(join(node_feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
+                                                                                              join(branch_feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
+                                                                                              join(kernel_repr_path, videonames[i] + '.pkl'))
+                                                               for i in xrange(total))
+
+                try:
+                    with open(train_filepath, 'rb') as f:
+                        data = cPickle.load(f)
+                        Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
+                except IOError:
+                    if use_disk:
+                        Kr_train, Kn_train = intersection_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
+                    else:
+                        D_train = dict()
+                        for i in train_inds:
+                            with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
+                                Di = cPickle.load(f)
+                            D_train.setdefault('root',[]).append(Di['root'])
+                            D_train.setdefault('nodes',[]).append(Di['nodes'])
+                        Kr_train, Kn_train = intersection_kernel(D_train, nt=nt)
+                    with open(train_filepath, 'wb') as f:
+                        cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
+
+                try:
+                    with open(test_filepath, 'rb') as f:
+                        data = cPickle.load(f)
+                        Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
+                except IOError:
+                    if use_disk:
+                        Kr_test, Kn_test = intersection_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                    else:
+                        if not 'D_train' in locals():
+                            D_train = dict()
+                            for i in train_inds:
                                 with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
                                     Di = cPickle.load(f)
-                                D_test.setdefault('root',[]).append(Di['root'])
-                                D_test.setdefault('nodes',[]).append(Di['nodes'])
+                                D_train.setdefault('root',[]).append(Di['root'])
+                                D_train.setdefault('nodes',[]).append(Di['nodes'])
 
-                            Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, nt=nt)
+                        D_test = dict()
+                        for i in test_inds:
+                            with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
+                                Di = cPickle.load(f)
+                            D_test.setdefault('root',[]).append(Di['root'])
+                            D_test.setdefault('nodes',[]).append(Di['nodes'])
 
-                        with open(test_filepath, 'wb') as f:
-                            cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
+                        Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, nt=nt)
 
-                kernels.setdefault('train',[]).append((Kr_train,Kn_train))
-                kernels.setdefault('test', []).append((Kr_test,Kn_test))
+                    with open(test_filepath, 'wb') as f:
+                        cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
+
+            kernels.setdefault('train',[]).append((Kr_train,Kn_train))
+            kernels.setdefault('test', []).append((Kr_test,Kn_test))
 
     return kernels
 
@@ -240,24 +200,25 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
 # Helper functions
 # ==============================================================================
 
-def construct_kernel_input_representations(fun, input_filepath, output_filepath):
+def construct_edge_pairs(feat_repr_filepath, output_filepath):
     if not exists(output_filepath):
         try:
-            with open(input_filepath, 'rb') as f:
+            with open(feat_repr_filepath, 'rb') as f:
                 data = cPickle.load(f)
-            root, nodes = fun(data, dtype=np.float32)
+            root, nodes = _construct_edge_pairs(data)
+
             with open(output_filepath, 'wb') as f:
                 cPickle.dump(dict(root=root, nodes=nodes), f)
         except IOError:
             sys.stderr.write('# ERROR: missing training instance'
-                             ' {}\n'.format(input_filepath))
+                             ' {}\n'.format(feat_repr_filepath))
             sys.stderr.flush()
             quit()
 
     return
 
 
-def construct_edge_pairs(data, dtype=np.float32):
+def _construct_edge_pairs(data, dtype=np.float32):
     """
     A tree is a list of edges, with each edge as the concatenation of the repr. of parent and child nodes.
     :param data:
@@ -273,25 +234,48 @@ def construct_edge_pairs(data, dtype=np.float32):
 
     return root, edges
 
+def construct_branch_evolutions(node_repr_filepath, branch_repr_filepath, output_filepath):
+    if not exists(output_filepath):
+        try:
+            with open(node_repr_filepath, 'rb') as f:
+                node_data = cPickle.load(f)
 
-def construct_branch_evolutions(data, dtype=np.float32):
-    root = data['tree'][1].astype(dtype=np.float32)  # copy root
+            if branch_repr_filepath == node_repr_filepath:
+                branch_data = node_data
+            else:
+                with open(branch_repr_filepath, 'rb') as f:
+                    branch_data = cPickle.load(f)
+
+            root, nodes = _construct_branch_evolutions(node_data, branch_data)
+
+            with open(output_filepath, 'wb') as f:
+                cPickle.dump(dict(root=root, nodes=nodes), f)
+        except IOError:
+            sys.stderr.write('# ERROR: missing training instance'
+                             ' {}\n'.format(node_repr_filepath))
+            sys.stderr.flush()
+            quit()
+
+    return
+
+def _construct_branch_evolutions(node_data, branch_data, dtype=np.float32):
+    root = node_data['tree'][1].astype(dtype=dtype)
 
     branches = []
-    for (id_i, x) in data['tree'].iteritems():
+    for (id_i, x) in branch_data['tree'].iteritems():
         if id_i > 1:
             # construct the path matrix
             X = []
             id_j = id_i
             while id_j > 0:
-                X.append(data['tree'][id_j])
+                X.append(branch_data['tree'][id_j])
                 id_j /= 2
 
             # compute evolution of the branch
-            w = videodarwin.darwin(np.array(X, dtype=np.float32))
+            w = videodarwin.darwin(np.array(X, dtype=dtype))
 
             # build the node representation its representation itself + the videodarwin of the path
-            b = np.concatenate([x,normalize(w,norm='l2')]).astype(dtype=dtype)
+            b = np.concatenate( [node_data['tree'][id_i], normalize(w)] ).astype(dtype=dtype)
             branches.append(b)
 
     return root, branches
