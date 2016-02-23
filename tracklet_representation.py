@@ -6,7 +6,7 @@ from os.path import isfile, exists
 from os import makedirs
 import cPickle
 from sklearn import preprocessing
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA, IncrementalPCA
 from yael import ynumpy
 import time
 import sys

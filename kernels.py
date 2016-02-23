@@ -68,6 +68,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                                 Di = cPickle.load(f)
                             D_train.setdefault('root',[]).append(Di['root'])
                             D_train.setdefault('nodes',[]).append(Di['nodes'])
+
                         Kr_train, Kn_train = intersection_kernel(D_train, nt=nt)
                     with open(train_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
@@ -158,6 +159,7 @@ def compute_ATNBEP_kernels(node_feats_path, branch_feats_path, videonames, train
                                 Di = cPickle.load(f)
                             D_train.setdefault('root',[]).append(Di['root'])
                             D_train.setdefault('nodes',[]).append(Di['nodes'])
+
                         Kr_train, Kn_train = intersection_kernel(D_train, nt=nt)
                     with open(train_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
@@ -275,7 +277,7 @@ def _construct_branch_evolutions(node_data, branch_data, dtype=np.float32):
             w = videodarwin.darwin(np.array(X, dtype=dtype))
 
             # build the node representation its representation itself + the videodarwin of the path
-            b = np.concatenate( [node_data['tree'][id_i], normalize(w)] ).astype(dtype=dtype)
+            b = np.concatenate( [node_data['tree'][id_i], node_data['tree'][int(id_i/2)], normalize(w)] ).astype(dtype=dtype)
             branches.append(b)
 
     return root, branches
