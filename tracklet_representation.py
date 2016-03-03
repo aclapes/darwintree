@@ -301,7 +301,7 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                         fv = ynumpy.fisher(cache[feat_t]['gmm'], tmp, include=INTERNAL_PARAMETERS['fv_repr_feats'])  # f-th frame fisher vec
                         V.append(fv)  # no normalization or nothing (it's done when computing darwin)
 
-                    vd = normalize(videodarwin.darwin(np.array(V)), norm='l2')
+                    vd = normalize(videodarwin.darwin(np.array(V)))
 
                     with open(output_filepath, 'wb') as f:
                         cPickle.dump(dict(v=vd), f)
@@ -319,7 +319,7 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                             tmp = d[np.where(obj[node_inds,0] == f)[0],:]
                             fv = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])
                             V.append(fv)  # no normalization or nothing (it's done when computing darwin)
-                        vdtree[parent_idx] = normalize(videodarwin.darwin(np.array(V)), norm='l2')
+                        vdtree[parent_idx] = normalize(videodarwin.darwin(np.array(V)))
 
                     with open(output_filepath, 'wb') as f:
                         cPickle.dump(dict(tree=vdtree), f)
@@ -542,13 +542,13 @@ def rootSIFT(X, p=0.5):
     return np.sign(X) * (np.abs(X) ** p)
 
 
-def normalize(x, norm='l2'):
+def normalize(x, norm='l2',dtype=np.float32):
     if norm == 'l1':
-        return np.float32(x) / (np.abs(x)).sum()
+        return x.astype(dtype=dtype) / (np.abs(x)).sum()
     elif norm == 'l2':
         # norms = np.sqrt(np.sum(x ** 2, 1))
         # return x / norms.reshape(-1, 1)
-        return np.float32(x) / np.sqrt(np.dot(x,x))
+        return x.astype(dtype=dtype) / np.sqrt(np.dot(x,x))
     else:
         raise AttributeError(norm)
 

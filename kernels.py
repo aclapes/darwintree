@@ -27,13 +27,14 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
     :param nt:
     :return:
     """
-    results = [None] * len(traintest_parts)
+
+    # kernels = dict(train=dict(), test=dict())
+    kernels = dict()
     for k, part in enumerate(traintest_parts):
         train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
 
         total = len(videonames)
 
-        kernels = dict()
         for feat_t in feat_types:
             train_filepath = join(kernels_output_path, 'train-' + feat_t + '-' + str(k) + '.pkl')
             test_filepath = join(kernels_output_path, 'test-' + feat_t + '-' + str(k) + '.pkl')
@@ -69,7 +70,8 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                             D_train.setdefault('root',[]).append(Di['root'])
                             D_train.setdefault('nodes',[]).append(Di['nodes'])
 
-                        Kr_train, Kn_train = intersection_kernel(D_train, nt=nt)
+                        Kr_train, Kn_train = intersection_kernel(D_train, n_channels=2, nt=nt)
+
                     with open(train_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
 
@@ -96,18 +98,27 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                             D_test.setdefault('root',[]).append(Di['root'])
                             D_test.setdefault('nodes',[]).append(Di['nodes'])
 
-                        Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, nt=nt)
+                        Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
 
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
 
-            kernels.setdefault('train',[]).append((Kr_train,Kn_train))
-            kernels.setdefault('test', []).append((Kr_test,Kn_test))
+            # Do not use the parent
+            # kernels.setdefault('train',{}).setdefault(feat_t,{})['root'] = [Kr_train[0]]
+            # kernels['train'][feat_t]['nodes'] = [Kn_train[0]]
+            # kernels.setdefault('test',{}).setdefault(feat_t,{})['root'] = [Kr_test[0]]
+            # kernels['test'][feat_t]['nodes'] = [Kn_test[0]]
+
+            # Use also the parent
+            kernels.setdefault('train',{}).setdefault(feat_t,{})['root'] = [Kr_train[0], Kr_train[1]]
+            kernels['train'][feat_t]['nodes'] = [Kn_train[0],Kn_train[1]]
+            kernels.setdefault('test',{}).setdefault(feat_t,{})['root'] = [Kr_test[0], Kr_test[1]]
+            kernels['test'][feat_t]['nodes'] = [Kn_test[0],Kn_test[1]]
 
     return kernels
 
 
-def compute_ATNBEP_kernels(node_feats_path, branch_feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
+def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
                            nt=4, use_disk=False):
     """
     Compute All Tree Node Branch Evolution Pairs.
@@ -118,13 +129,13 @@ def compute_ATNBEP_kernels(node_feats_path, branch_feats_path, videonames, train
     :param nt:
     :return:
     """
-    results = [None] * len(traintest_parts)
+
+    kernels = dict()
     for k, part in enumerate(traintest_parts):
         train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
 
         total = len(videonames)
 
-        kernels = dict()
         for feat_t in feat_types:
             train_filepath = join(kernels_output_path, 'train-' + feat_t + '-' + str(k) + '.pkl')
             test_filepath = join(kernels_output_path, 'test-' + feat_t + '-' + str(k) + '.pkl')
@@ -140,8 +151,7 @@ def compute_ATNBEP_kernels(node_feats_path, branch_feats_path, videonames, train
                 if not exists(kernel_repr_path):
                     makedirs(kernel_repr_path)
 
-                Parallel(n_jobs=nt, backend='threading')(delayed(construct_branch_evolutions)(join(node_feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
-                                                                                              join(branch_feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
+                Parallel(n_jobs=nt, backend='threading')(delayed(construct_branch_evolutions)(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
                                                                                               join(kernel_repr_path, videonames[i] + '.pkl'))
                                                                for i in xrange(total))
 
@@ -192,8 +202,15 @@ def compute_ATNBEP_kernels(node_feats_path, branch_feats_path, videonames, train
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
 
-            kernels.setdefault('train',[]).append((Kr_train,Kn_train))
-            kernels.setdefault('test', []).append((Kr_test,Kn_test))
+            kernels.setdefault('train',{}).setdefault(feat_t,{})['root'] = Kr_train
+            kernels['train'][feat_t]['nodes'] = Kn_train
+            kernels.setdefault('test',{}).setdefault(feat_t,{})['root'] = Kr_test
+            kernels['test'][feat_t]['nodes'] = Kn_test
+
+            # kernels.setdefault('train',{}).setdefault(feat_t,{})['root'] = [Kr_train[0], Kr_train[1]]
+            # kernels['train'][feat_t]['nodes'] = [Kn_train[0],Kn_train[1]]
+            # kernels.setdefault('test',{}).setdefault(feat_t,{})['root'] = [Kr_test[0], Kr_test[1]]
+            # kernels['test'][feat_t]['nodes'] = [Kn_test[0],Kn_test[1]]
 
     return kernels
 
@@ -207,6 +224,7 @@ def construct_edge_pairs(feat_repr_filepath, output_filepath):
         try:
             with open(feat_repr_filepath, 'rb') as f:
                 data = cPickle.load(f)
+
             root, nodes = _construct_edge_pairs(data)
 
             with open(output_filepath, 'wb') as f:
@@ -226,59 +244,48 @@ def _construct_edge_pairs(data, dtype=np.float32):
     :param data:
     :return root, edges:
     """
-    root = data['tree'][1].astype(dtype=dtype)
+    root = (data['tree'][1].astype(dtype=dtype), np.zeros(data['tree'][1].shape, dtype=dtype))
 
     edges = []
     for id in data['tree'].keys():
         if id > 1:
-            e = np.concatenate( [data['tree'][id], data['tree'][int(id/2.)]] ).astype(dtype=dtype)
+            e = (data['tree'][id].astype('float32'), data['tree'][int(id/2.)].astype('float32'))
             edges.append(e)
 
     return root, edges
 
-def construct_branch_evolutions(node_repr_filepath, branch_repr_filepath, output_filepath):
+def construct_branch_evolutions(input_filepath, output_filepath):
     if not exists(output_filepath):
         try:
-            with open(node_repr_filepath, 'rb') as f:
-                node_data = cPickle.load(f)
+            with open(input_filepath, 'rb') as f:
+                data = cPickle.load(f)
 
-            if branch_repr_filepath == node_repr_filepath:
-                branch_data = node_data
-            else:
-                with open(branch_repr_filepath, 'rb') as f:
-                    branch_data = cPickle.load(f)
-
-            root, nodes = _construct_branch_evolutions(node_data, branch_data)
+            root, nodes = _construct_branch_evolutions(data)
 
             with open(output_filepath, 'wb') as f:
                 cPickle.dump(dict(root=root, nodes=nodes), f)
         except IOError:
             sys.stderr.write('# ERROR: missing training instance'
-                             ' {}\n'.format(node_repr_filepath))
+                             ' {}\n'.format(input_filepath))
             sys.stderr.flush()
             quit()
 
     return
 
-def _construct_branch_evolutions(node_data, branch_data, dtype=np.float32):
-    root = node_data['tree'][1].astype(dtype=dtype)
+def _construct_branch_evolutions(data, dtype=np.float32):
+    root = (np.array([0],dtype=dtype), np.array([0],dtype=dtype))
 
     branches = []
-    for (id_i, x) in branch_data['tree'].iteritems():
+    for (id_i, x) in data['tree'].iteritems():
         if id_i > 1:
             # construct the path matrix
             X = []
             id_j = id_i
             while id_j > 0:
-                X.append(branch_data['tree'][id_j])
+                X.append(data['tree'][id_j])
                 id_j /= 2
 
-            # compute evolution of the branch
-            w = videodarwin.darwin(np.array(X, dtype=dtype))
-
-            # build the node representation its representation itself + the videodarwin of the path
-            b = np.concatenate( [node_data['tree'][id_i], node_data['tree'][int(id_i/2)], normalize(w)] ).astype(dtype=dtype)
-            branches.append(b)
+            branches.append(normalize(videodarwin.darwin(np.array(X))))
 
     return root, branches
 
@@ -303,7 +310,8 @@ def intersection_kernel(input_path, videonames, X, Y=None, nt=1, verbose=True):
     step = np.int(np.floor(len(points)/nt)+1)
 
     shuffle(points)  # so all threads have similar workload
-    ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel)(input_path, videonames, X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))], tid=i, verbose=True)
+    ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel)(input_path, videonames, X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))],
+                                                                                 n_channels=n_channels, tid=i, verbose=True)
                                                    for i in xrange(nt))
 
     # aggregate results of parallel computations
@@ -319,7 +327,7 @@ def intersection_kernel(input_path, videonames, X, Y=None, nt=1, verbose=True):
 
     return Kr, Ke
 
-def intersection_kernel(X, Y=None, nt=1, verbose=True):
+def intersection_kernel(X, Y=None, n_channels=1, nt=1, verbose=True):
     points = []
 
     X['root'], X['nodes'] = np.abs(X['root']), [np.abs(np.array(x)) for x in X['nodes']]
@@ -341,7 +349,8 @@ def intersection_kernel(X, Y=None, nt=1, verbose=True):
     step = np.int(np.floor(len(points)/nt)+1)
 
     shuffle(points)  # so all threads have similar workload
-    ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))], tid=i, verbose=True)
+    ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))],
+                                                                                 n_channels=n_channels, tid=i, verbose=True)
                                                    for i in xrange(nt))
 
     # aggregate results of parallel computations
@@ -352,8 +361,9 @@ def intersection_kernel(X, Y=None, nt=1, verbose=True):
 
     # if symmetric, replicate upper to lower triangle matrix
     if is_symmetric:
-        Kr += np.triu(Kr,1).T
-        Ke += np.triu(Ke,1).T
+        for i in xrange(n_channels):
+            Kr[i] += np.triu(Kr[i],1).T
+            Ke[i] += np.triu(Ke[i],1).T
 
     return Kr, Ke
 
@@ -387,7 +397,6 @@ def _intersection_kernel(input_path, videonames, X, Y, points, tid=None, verbose
             Dj = cPickle.load(f)
         Dj['root'], Dj['nodes'] = np.abs(Dj['root']), np.abs(Dj['nodes'])
 
-
         Kr[i,j] = np.minimum(Di['root'], Dj['root']).sum()
 
         # pair-wise intersection of edges' histograms
@@ -399,7 +408,7 @@ def _intersection_kernel(input_path, videonames, X, Y, points, tid=None, verbose
 
     return Kr, Kn
 
-def _intersection_kernel(X, Y, points, tid=None, verbose=True):
+def _intersection_kernel(X, Y, points, n_channels=1, tid=None, verbose=True):
     """
     Compute the ATEP kernel.
     :param X:
@@ -409,20 +418,24 @@ def _intersection_kernel(X, Y, points, tid=None, verbose=True):
     :param verbose:
     :return:
     """
-    Kr = np.zeros((len(X['root']),len(Y['root'])), dtype=np.float32)  # root kernel
+    Kr = np.zeros((n_channels,len(X['root']),len(Y['root'])), dtype=np.float32)  # root kernel
     Kn = Kr.copy()
 
     for pid,(i,j) in enumerate(points):
         if verbose:
             print('[Parallel intersection kernel] Thread %d, progress = %.1f%%]' % (tid,100.*(pid+1)/len(points)))
 
-        Kr[i,j] = np.minimum(X['root'][i], Y['root'][j]).sum()
+        for k in xrange(n_channels):
+            Kr[k,i,j] = np.minimum(X['root'][i][k], Y['root'][j][k]).sum()
 
         # pair-wise intersection of edges' histograms
-        sum_nodes = 0.
+        sum_nodes = np.zeros((n_channels), dtype=np.float64)
         for node_i in xrange(len(X['nodes'][i])):
             for node_j in xrange(len(Y['nodes'][j])):
-                sum_nodes += np.minimum(X['nodes'][i][node_i], Y['nodes'][j][node_j]).sum()
-        Kn[i,j] = sum_nodes / (len(X['nodes'][i]) * len(Y['nodes'][j]))
+                for k in xrange(n_channels):
+                    sum_nodes[k] += np.minimum(X['nodes'][i][node_i][k], Y['nodes'][j][node_j][k]).sum()
+
+        for k in xrange(n_channels):
+            Kn[k,i,j] = sum_nodes[k] / (len(X['nodes'][i]) * len(Y['nodes'][j]))
 
     return Kr, Kn

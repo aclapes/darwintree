@@ -74,3 +74,5 @@ target/
 *.docx
 *.ppt
 *.pptx
+
+*.dat
