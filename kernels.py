@@ -353,6 +353,8 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=1, verbose=True):
                                                                                  n_channels=n_channels, tid=i, verbose=True)
                                                    for i in xrange(nt))
 
+    ret = _intersection_kernel(X, Y, points, n_channels=n_channels, tid=-1, verbose=True)
+
     # aggregate results of parallel computations
     Kr, Ke = ret[0][0], ret[0][1]
     for r in ret[1:]:

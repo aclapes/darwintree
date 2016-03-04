@@ -42,6 +42,16 @@ def load_XML_config(filepath):
     for path in xml['configuration']['path']:
         config_dict[path['@key']] = path['#text'].encode('utf-8')
 
+    if not isinstance(xml['configuration']['option'], list):
+        option = xml['configuration']['option']
+        config_dict[option['@key']] = option['#text'].encode('utf-8')
+    else:
+        for option in xml['configuration']['option']:
+            config_dict[option['@key']] = option['#text'].encode('utf-8')
+
+    if 'num_threads' in config_dict:
+        config_dict['num_threads'] = int(config_dict['num_threads'])
+
     features_list = xml['configuration']['features_list']
 
     if type(features_list['item']) is unicode:
@@ -305,18 +315,18 @@ if __name__ == "__main__":
         # tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False)
         tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                    feats_path + 'fvtree/', \
-                                                                   treelike=True, clusters_path=clusters_path)
+                                                                   treelike=True, clusters_path=clusters_path, nt=xml_config['num_threads'])
         tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                    feats_path + 'vdtree/', \
-                                                                   treelike=True, clusters_path=clusters_path)
+                                                                   treelike=True, clusters_path=clusters_path, nt=xml_config['num_threads'])
 
         st_time = time.time()
         # atep = kernels.compute_ATEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
         #                                     kernels_path + 'atep-fv/', use_disk=False)
         atep = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, [traintest_parts[0]], xml_config['features_list'], \
-                                            kernels_path + 'atep-vd/', use_disk=False)
+                                            kernels_path + 'atep-vd/', use_disk=False, nt=xml_config['num_threads'])
         atnbep = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, [traintest_parts[0]], xml_config['features_list'], \
-                                                kernels_path + 'atnbep-fv/', use_disk=False)
+                                                kernels_path + 'atnbep-fv/', use_disk=False, nt=xml_config['num_threads'])
         merged = utils.merge_dictionaries([atep, atnbep])
         combs = [c for c in itertools.product(*[np.linspace(0, 1, 11),np.linspace(0, 1, 11),[1.]])]
         results = classification.classify(merged, \
