@@ -173,18 +173,18 @@ def get_highfive_config(parent_path):
                            for j in train_test[partition_name][name]]
             int_inds += [i]*len(train_test[partition_name][name])
 
-        train_test_inds.append(np.linspace(n, len(videonames)-1, len(videonames)-n, dtype=np.int32))
+        train_test_inds.append(np.linspace(n, len(videonames)-1, len(videonames)-n).astype('int32'))
 
     traintest_parts = []
     for part_inds in train_test_inds:
-        part = np.zeros((len(videonames),), dtype=np.int32)
+        part = np.zeros((len(videonames),)).astype('int32')
         part[part_inds] = 1
         traintest_parts.append(part)
 
     fullvideonames = [parent_path + 'tv_human_interactions_videos/' + videoname for videoname in videonames]
 
     # create a matrix #{instances}x#{classes}, where entries are all "-1" except for 1s in corresponding class columns
-    class_labels = (-1) * np.ones((len(int_inds),len(action_names)),dtype=np.int32)
+    class_labels = (-1) * np.ones((len(int_inds),len(action_names))).astype('int32')
     for i in xrange(len(action_names)):
         class_labels[np.array(int_inds)==i,i] = 1
 
@@ -242,7 +242,7 @@ def get_ucfsportsaction_dataset(parent_path):
     fullvideonames = [videos_dir + videoname for videoname in videonames]
 
     traintest_parts = []
-    part = np.zeros((len(videonames),), dtype=np.int32)
+    part = np.zeros((len(videonames),)).astype('int32')
     part[np.array(test_inds)-1] = 1
     traintest_parts.append(part)
 
@@ -251,7 +251,7 @@ def get_ucfsportsaction_dataset(parent_path):
         int_inds += [i] * action_classes[name]
 
     # create a matrix #{instances}x#{classes}, where entries are all "-1" except for 1s in corresponding class columns
-    class_labels = (-1) * np.ones((len(int_inds),len(action_names)),dtype=np.int32)
+    class_labels = (-1) * np.ones((len(int_inds),len(action_names))).astype('int32')
     for i in xrange(len(action_names)):
         class_labels[np.array(int_inds)==i,i] = 1
 
