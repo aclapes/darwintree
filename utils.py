@@ -41,7 +41,7 @@ def merge_pair_of_dictionaries(dst, src):
                     if not isinstance(current_dst[key], list):
                         current_dst[key] = [current_dst[key], current_src[key]]  # there is hit
                     else:
-                        current_dst[key] += [current_src[key]] if not isinstance(current_dst[key],list) else current_src[key]  # create a list and keep both, do not overwrite
+                        current_dst[key] += [current_src[key]] if not isinstance(current_src[key],list) else current_src[key]  # create a list and keep both, do not overwrite
     return dst
 
 

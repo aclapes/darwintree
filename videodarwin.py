@@ -45,7 +45,7 @@ def darwin(X, c_svm_param=1):
     V = np.cumsum(X,axis=0) / one_to_T
     w_fw = rootSIFT(linearSVR(V, c_svm_param, 2)) # videodarwin
 
-    V = rootSIFT(np.cumsum(np.flipud(X),axis=0) / one_to_T) # reverse videodarwin
-    w_rv = linearSVR(V, c_svm_param, 2)
+    V = np.cumsum(np.flipud(X),axis=0) / one_to_T # reverse videodarwin
+    w_rv = rootSIFT(linearSVR(V, c_svm_param, 2))
 
     return np.concatenate([w_fw, w_rv])

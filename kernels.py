@@ -28,10 +28,10 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
     :return:
     """
 
-    # kernels = dict(train=dict(), test=dict())
-    kernels = dict()
+    kernels = []
     for k, part in enumerate(traintest_parts):
         train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
+        kernels_part = dict()
 
         total = len(videonames)
 
@@ -83,21 +83,22 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                     if use_disk:
                         Kr_test, Kn_test = intersection_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
                     else:
-                        if not 'D_train' in locals():
-                            D_train = dict()
-                            for i in train_inds:
-                                with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
-                                    Di = cPickle.load(f)
-                                D_train.setdefault('root',[]).append(Di['root'])
-                                D_train.setdefault('nodes',[]).append(Di['nodes'])
+                        # if not 'D_train' in locals():
+                        #     D_train = dict()
+                        #     for i in train_inds:
+                        #         with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
+                        #             Di = cPickle.load(f)
+                        #         D_train.setdefault('root',[]).append(Di['root'])
+                        #         D_train.setdefault('nodes',[]).append(Di['nodes'])
 
                         D_test = dict()
                         for i in test_inds:
+                            print join(kernel_repr_path, videonames[i] + '.pkl')
                             with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
                                 Di = cPickle.load(f)
                             D_test.setdefault('root',[]).append(Di['root'])
                             D_test.setdefault('nodes',[]).append(Di['nodes'])
-
+                        quit()
                         Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
 
                     with open(test_filepath, 'wb') as f:
@@ -110,10 +111,12 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
             # kernels['test'][feat_t]['nodes'] = [Kn_test[0]]
 
             # Use also the parent
-            kernels.setdefault('train',{}).setdefault(feat_t,{})['root'] = [Kr_train[0], Kr_train[1]]
-            kernels['train'][feat_t]['nodes'] = [Kn_train[0],Kn_train[1]]
-            kernels.setdefault('test',{}).setdefault(feat_t,{})['root'] = [Kr_test[0], Kr_test[1]]
-            kernels['test'][feat_t]['nodes'] = [Kn_test[0],Kn_test[1]]
+            kernels_part.setdefault('train',{}).setdefault(feat_t,{})['root'] = [Kr_train[0], Kr_train[1]]
+            kernels_part['train'][feat_t]['nodes'] = [Kn_train[0],Kn_train[1]]
+            kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = [Kr_test[0], Kr_test[1]]
+            kernels_part['test'][feat_t]['nodes'] = [Kn_test[0],Kn_test[1]]
+
+        kernels.append(kernels_part)
 
     return kernels
 
@@ -130,9 +133,10 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
     :return:
     """
 
-    kernels = dict()
+    kernels = []
     for k, part in enumerate(traintest_parts):
         train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
+        kernels_part = dict()
 
         total = len(videonames)
 
@@ -202,15 +206,16 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
 
-            kernels.setdefault('train',{}).setdefault(feat_t,{})['root'] = Kr_train
-            kernels['train'][feat_t]['nodes'] = Kn_train
-            kernels.setdefault('test',{}).setdefault(feat_t,{})['root'] = Kr_test
-            kernels['test'][feat_t]['nodes'] = Kn_test
+            kernels_part.setdefault('train',{}).setdefault(feat_t,{})['root'] = Kr_train[0]
+            kernels_part['train'][feat_t]['nodes'] = Kn_train[0]
+            kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = Kr_test[0]
+            kernels_part['test'][feat_t]['nodes'] = Kn_test[0]
 
             # kernels.setdefault('train',{}).setdefault(feat_t,{})['root'] = [Kr_train[0], Kr_train[1]]
             # kernels['train'][feat_t]['nodes'] = [Kn_train[0],Kn_train[1]]
             # kernels.setdefault('test',{}).setdefault(feat_t,{})['root'] = [Kr_test[0], Kr_test[1]]
             # kernels['test'][feat_t]['nodes'] = [Kn_test[0],Kn_test[1]]
+        kernels.append(kernels_part)
 
     return kernels
 
@@ -353,7 +358,6 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=1, verbose=True):
                                                                                  n_channels=n_channels, tid=i, verbose=True)
                                                    for i in xrange(nt))
 
-    ret = _intersection_kernel(X, Y, points, n_channels=n_channels, tid=-1, verbose=True)
 
     # aggregate results of parallel computations
     Kr, Ke = ret[0][0], ret[0][1]

@@ -44,8 +44,8 @@ def classify(input_kernels, class_labels, traintest_parts, a, feat_types, c=[1])
     for k, part in enumerate(traintest_parts):
         train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
 
-        kernels_train = input_kernels['train']
-        kernels_test  = input_kernels['test']
+        kernels_train = input_kernels[k]['train']
+        kernels_test  = input_kernels[k]['test']
         results[k] = train_and_classify(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), c)
 
     return results
