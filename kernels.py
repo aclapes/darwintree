@@ -51,6 +51,11 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                 if not exists(kernel_repr_path):
                     makedirs(kernel_repr_path)
 
+                # DEBUG
+                # ---
+                    # for i in xrange(total):
+                    #     construct_edge_pairs(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), join(kernel_repr_path, videonames[i] + '.pkl'))
+                # ---
                 Parallel(n_jobs=nt, backend='threading')(delayed(construct_edge_pairs)(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
                                                                                        join(kernel_repr_path, videonames[i] + '.pkl'))
                                                          for i in xrange(total))
@@ -64,6 +69,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                         Kr_train, Kn_train = intersection_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
                     else:
                         D_train = dict()
+                        # for i in train_inds[:10]:  # DEBUG
                         for i in train_inds:
                             with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
                                 Di = cPickle.load(f)
@@ -83,13 +89,13 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                     if use_disk:
                         Kr_test, Kn_test = intersection_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
                     else:
-                        # if not 'D_train' in locals():
-                        #     D_train = dict()
-                        #     for i in train_inds:
-                        #         with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
-                        #             Di = cPickle.load(f)
-                        #         D_train.setdefault('root',[]).append(Di['root'])
-                        #         D_train.setdefault('nodes',[]).append(Di['nodes'])
+                        if not 'D_train' in locals():
+                            D_train = dict()
+                            for i in train_inds:
+                                with open(join(kernel_repr_path, videonames[i] + '.pkl'), 'rb') as f:
+                                    Di = cPickle.load(f)
+                                D_train.setdefault('root',[]).append(Di['root'])
+                                D_train.setdefault('nodes',[]).append(Di['nodes'])
 
                         D_test = dict()
                         for i in test_inds:
@@ -98,7 +104,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                                 Di = cPickle.load(f)
                             D_test.setdefault('root',[]).append(Di['root'])
                             D_test.setdefault('nodes',[]).append(Di['nodes'])
-                        quit()
+
                         Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
 
                     with open(test_filepath, 'wb') as f:
@@ -211,10 +217,6 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
             kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = Kr_test[0]
             kernels_part['test'][feat_t]['nodes'] = Kn_test[0]
 
-            # kernels.setdefault('train',{}).setdefault(feat_t,{})['root'] = [Kr_train[0], Kr_train[1]]
-            # kernels['train'][feat_t]['nodes'] = [Kn_train[0],Kn_train[1]]
-            # kernels.setdefault('test',{}).setdefault(feat_t,{})['root'] = [Kr_test[0], Kr_test[1]]
-            # kernels['test'][feat_t]['nodes'] = [Kn_test[0],Kn_test[1]]
         kernels.append(kernels_part)
 
     return kernels
@@ -254,7 +256,7 @@ def _construct_edge_pairs(data, dtype=np.float32):
     edges = []
     for id in data['tree'].keys():
         if id > 1:
-            e = (data['tree'][id].astype('float32'), data['tree'][int(id/2.)].astype('float32'))
+            e = [data['tree'][id].astype('float32'), data['tree'][int(id/2.)].astype('float32')]
             edges.append(e)
 
     return root, edges
@@ -290,12 +292,13 @@ def _construct_branch_evolutions(data, dtype=np.float32):
                 X.append(data['tree'][id_j])
                 id_j /= 2
 
-            branches.append(normalize(videodarwin.darwin(np.array(X))))
+            w = videodarwin.darwin(np.array(X))
+            branches.append(normalize(w))
 
     return root, branches
 
 
-def intersection_kernel(input_path, videonames, X, Y=None, nt=1, verbose=True):
+def intersection_kernel(input_path, videonames, X, Y=None, n_channels=1, nt=1, verbose=True):
     points = []
 
     if Y is None:
@@ -335,7 +338,8 @@ def intersection_kernel(input_path, videonames, X, Y=None, nt=1, verbose=True):
 def intersection_kernel(X, Y=None, n_channels=1, nt=1, verbose=True):
     points = []
 
-    X['root'], X['nodes'] = np.abs(X['root']), [np.abs(np.array(x)) for x in X['nodes']]
+    X['root'] = [[np.abs(root[i]) for i in xrange(n_channels)] for root in X['root']]
+    X['nodes'] = [[[np.abs(node[i]) for i in xrange(n_channels)] for node in tree] for tree in X['nodes']]
     if Y is None:
         # generate combinations
         points += [(i,i) for i in xrange(len(X['root']))]  # diagonal
@@ -343,7 +347,8 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=1, verbose=True):
         is_symmetric = True
         Y = X
     else:
-        Y['root'], Y['nodes'] = np.abs(Y['root']), [np.abs(np.array(y)) for y in Y['nodes']]
+        Y['root'] = [[np.abs(root[i]) for i in xrange(n_channels)] for root in Y['root']]
+        Y['nodes'] = [[[np.abs(node[i]) for i in xrange(n_channels)] for node in tree] for tree in Y['nodes']]
         # generate product
         points += [ p for p in itertools.product(*[np.arange(len(X['root'])),np.arange(len(Y['root']))]) ]
         is_symmetric = False
@@ -351,13 +356,17 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=1, verbose=True):
     if verbose:
         print('Computing fast %dx%d intersection kernel ...\n' % (len(X['root']),len(Y['root'])))
 
-    step = np.int(np.floor(len(points)/nt)+1)
-
     shuffle(points)  # so all threads have similar workload
+
+    # DEBUG
+    # ---
+    # step = len(points)
+    # ret = _intersection_kernel(X, Y, points, n_channels=n_channels, tid=-1, verbose=True)
+    # ---
+    step = np.int(np.floor(len(points)/nt)+1)
     ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))],
                                                                                  n_channels=n_channels, tid=i, verbose=True)
                                                    for i in xrange(nt))
-
 
     # aggregate results of parallel computations
     Kr, Ke = ret[0][0], ret[0][1]
@@ -384,7 +393,7 @@ def _intersection_kernel(input_path, videonames, X, Y, points, tid=None, verbose
     :param verbose:
     :return:
     """
-    Kr = np.zeros((len(X),len(Y)), dtype=np.float32)  # root kernel
+    Kr = np.zeros((len(X),len(Y)), dtype=np.float64)  # root kernel
     Kn = Kr.copy()
 
     sorted_points = sorted(points)  # sort set of points using the i-th index
@@ -424,22 +433,29 @@ def _intersection_kernel(X, Y, points, n_channels=1, tid=None, verbose=True):
     :param verbose:
     :return:
     """
-    Kr = np.zeros((n_channels,len(X['root']),len(Y['root'])), dtype=np.float32)  # root kernel
+    Kr = np.zeros((n_channels,len(X['root']),len(Y['root'])), dtype=np.float64)  # root kernel
     Kn = Kr.copy()
+
+    x = X['root'][0][0]  # an arbitrary feature vector
+    p = 1.  # normalization factor
+    if np.abs(1. - np.abs(x).sum()) <= 1e-6:
+        p = 1./len(x)
+    elif np.abs(1. - np.sqrt(np.dot(x,x))) <= 1e-6:
+        p = 1./np.sqrt(len(x))
 
     for pid,(i,j) in enumerate(points):
         if verbose:
             print('[Parallel intersection kernel] Thread %d, progress = %.1f%%]' % (tid,100.*(pid+1)/len(points)))
 
         for k in xrange(n_channels):
-            Kr[k,i,j] = np.minimum(X['root'][i][k], Y['root'][j][k]).sum()
+            Kr[k,i,j] = np.minimum(X['root'][i][k], Y['root'][j][k]).sum() * p
 
         # pair-wise intersection of edges' histograms
         sum_nodes = np.zeros((n_channels), dtype=np.float64)
         for node_i in xrange(len(X['nodes'][i])):
             for node_j in xrange(len(Y['nodes'][j])):
                 for k in xrange(n_channels):
-                    sum_nodes[k] += np.minimum(X['nodes'][i][node_i][k], Y['nodes'][j][node_j][k]).sum()
+                    sum_nodes[k] += np.minimum(X['nodes'][i][node_i][k], Y['nodes'][j][node_j][k]).sum() * p
 
         for k in xrange(n_channels):
             Kn[k,i,j] = sum_nodes[k] / (len(X['nodes'][i]) * len(Y['nodes'][j]))

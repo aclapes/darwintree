@@ -11,6 +11,15 @@ def rootSIFT(X):
     '''
     return np.multiply(np.sign(X), np.sqrt(np.abs(X)))
 
+def normalizeL1(X):
+    """
+    Normalize the data using L1-norm.
+    :param X: each row of X is an instance
+    :return: the normalized data
+    """
+    X = np.matrix(X)
+    return X / np.sqrt(np.sum(np.abs(X), axis=1))
+
 def normalizeL2(X):
     """
     Normalize the data using L2-norm.
@@ -43,9 +52,9 @@ def darwin(X, c_svm_param=1):
     one_to_T = one_to_T[:,np.newaxis]
 
     V = np.cumsum(X,axis=0) / one_to_T
-    w_fw = rootSIFT(linearSVR(V, c_svm_param, 2)) # videodarwin
+    w_fw = linearSVR(rootSIFT(V), c_svm_param, 2) # videodarwin
 
     V = np.cumsum(np.flipud(X),axis=0) / one_to_T # reverse videodarwin
-    w_rv = rootSIFT(linearSVR(V, c_svm_param, 2))
+    w_rv = linearSVR(rootSIFT(V), c_svm_param, 2)
 
     return np.concatenate([w_fw, w_rv])

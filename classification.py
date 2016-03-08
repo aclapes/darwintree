@@ -236,7 +236,6 @@ def train_and_classify(input_kernels_tr, input_kernels_te, a, feat_types, class_
 
     Rval_ap = np.zeros((class_labels.shape[1], len(a), len(c)), dtype=np.float32)
     for k in xrange(class_labels.shape[1]):
-        print k
         for l in xrange(nl):
             for i, a_i in enumerate(C[k][0]):
                 kernels_tr = deepcopy(input_kernels_tr)
@@ -288,7 +287,7 @@ def train_and_classify(input_kernels_tr, input_kernels_te, a, feat_types, class_
 
             C[k] = (a, c_new)
 
-    print p, np.mean(p)
+    # print p, np.mean(p)
 
     # X, Y = np.meshgrid(np.linspace(0,len(c)-1,len(c)),np.linspace(0,len(a)-1,len(a)))
     # fig = plt.figure(figsize=plt.figaspect(0.5))
@@ -309,7 +308,7 @@ def train_and_classify(input_kernels_tr, input_kernels_te, a, feat_types, class_
     ap_classes = []
     for k in xrange(class_labels.shape[1]):
         a_best = S[k][0]
-        print a_best
+        print k, a_best
 
         kernels_tr = deepcopy(input_kernels_tr)
         kernels_te = deepcopy(input_kernels_te)
@@ -317,7 +316,7 @@ def train_and_classify(input_kernels_tr, input_kernels_te, a, feat_types, class_
             kernels_tr[feat_t]['root'] = sum_of_arrays(kernels_tr[feat_t]['root'], [1,0,0])
             kernels_tr[feat_t]['nodes'] = sum_of_arrays(kernels_tr[feat_t]['nodes'], [a_best[0], 0, a_best[2]*(1-a_best[0])])
         for feat_t in kernels_te.keys():
-            kernels_te[feat_t]['root'] = sum_of_arrays(kernels_te[feat_t]['root'], [1,0,0,0])
+            kernels_te[feat_t]['root'] = sum_of_arrays(kernels_te[feat_t]['root'], [1,0,0])
             kernels_te[feat_t]['nodes'] = sum_of_arrays(kernels_te[feat_t]['nodes'], [a_best[0], 0, a_best[2]*(1-a_best[0])])
 
         # normalize kernel (dividing by the median value of training's kernel)
@@ -363,8 +362,8 @@ def _train_and_classify_binary(K_tr, K_te, train_labels, test_labels, c=1.0):
     acc = (pos_acc + neg_acc) / 2.0
 
     # TODO: decide what is it
-    # ap = average_precision_score(test_labels, test_preds)
-    ap = average_precision_score(test_labels, test_scores)
+    ap = average_precision_score(test_labels, test_preds)
+    # ap = average_precision_score(test_labels, test_scores)
 
     return acc, ap
 
