@@ -75,13 +75,13 @@ def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path):
     total = len(fullvideonames)
     for i in indices:
         if isfile(tracklets_path + 'obj/' + videonames[i] + '.pkl'):
-            print('%s.avi -> OK' % fullvideonames[i])
+            print('%s -> OK' % fullvideonames[i])
             continue
 
         start_time = time.time()
         # extract the features into temporary file
         if not isfile('tmpfiles/' + videonames[i] + '.tmp'):
-            extract_wang_features(fullvideonames[i] + '.avi', INTERNAL_PARAMETERS['L'], 'tmpfiles/' + videonames[i] + '.tmp')
+            extract_wang_features(fullvideonames[i], INTERNAL_PARAMETERS['L'], 'tmpfiles/' + videonames[i] + '.tmp')
 
         # read the temporary file to numpy array
         data = []

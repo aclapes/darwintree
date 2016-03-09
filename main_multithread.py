@@ -9,7 +9,7 @@ Copyrights: Albert Clap\'{e}s, 2015
 '''
 
 import numpy as np
-from os.path import isdir, splitext
+from os.path import isdir, splitext, basename, join
 from os import listdir, makedirs
 import time
 import copy
@@ -107,6 +107,8 @@ def get_dataset_info(xml_config):
         dataset_info = get_highfive_config(dataset_path)
     elif dataset_name == 'ucf_sports_actions':
         dataset_info = get_ucfsportsaction_dataset(dataset_path)
+    elif dataset_name == 'olympic_sports':
+        dataset_info = get_olympicsports_dataset(dataset_path)
 
     return dataset_info
 
@@ -181,7 +183,7 @@ def get_highfive_config(parent_path):
         part[part_inds] = 1
         traintest_parts.append(part)
 
-    fullvideonames = [parent_path + 'tv_human_interactions_videos/' + videoname for videoname in videonames]
+    fullvideonames = [join(parent_path,'tv_human_interactions_videos/', videoname+'.avi')  for videoname in videonames]
 
     # create a matrix #{instances}x#{classes}, where entries are all "-1" except for 1s in corresponding class columns
     class_labels = (-1) * np.ones((len(int_inds),len(action_names))).astype('int32')
@@ -258,6 +260,46 @@ def get_ucfsportsaction_dataset(parent_path):
     # train_test_indx = (np.array(train_inds) - 1, np.array(test_inds) - 1)
 
     return fullvideonames, videonames, class_labels, action_names, traintest_parts
+
+
+def get_olympicsports_dataset(parent_path):
+    # recall in train_test_split/ diving_platform_10m and diving_spring_3m has the "diving" part missing. Correct it.
+    action_names = ['basketball_layup', 'bowling', 'clean_and_jerk', 'discus_throw', 'diving_platform_10m', \
+                    'diving_springboard_3m', 'hammer_throw', 'high_jump', 'javelin_throw', 'long_jump', 'pole_vault', \
+                    'shot_put', 'snatch', 'tennis_serve', 'triple_jump', 'vault']
+
+
+    fullvideonames = []
+    videonames = []
+    int_inds = []
+    traintest_parts = []
+    for i, part in enumerate(['train', 'test']):
+        c = 0
+        for action in action_names:
+            with open(join(parent_path, 'train_test_split', part, action.replace('_',' ')+'.txt'), 'r') as f:
+                k = 1
+                line = f.readline().rstrip()
+                fullvideonames.append(join(parent_path, action, line+'.mp4'))
+                videonames.append(line)
+                traintest_parts.append(i)
+                while 1:
+                    line = f.readline().rstrip()
+                    if line != '':
+                        fullvideonames.append(join(parent_path, action, line+'.mp4'))
+                        videonames.append(line)
+                        traintest_parts.append(i)
+                        k += 1
+                    else:
+                        break
+                int_inds += [c] * k
+            c += 1
+
+
+    class_labels = (-1) * np.ones((len(int_inds),len(action_names))).astype('int32')
+    for i in xrange(len(action_names)):
+        class_labels[np.array(int_inds)==i,i] = 1
+
+    return fullvideonames, videonames, class_labels, action_names, [traintest_parts]
 
 
 

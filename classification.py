@@ -1,16 +1,9 @@
 __author__ = 'aclapes'
 
 import numpy as np
-import cPickle
-from os.path import join
-from os.path import isfile, exists
 from sklearn import svm
 from sklearn.metrics import average_precision_score
 from sklearn.cross_validation import StratifiedKFold
-import sys
-import itertools
-from joblib import delayed, Parallel
-from random import shuffle
 from utils import normalize_by_median, sum_of_arrays
 from copy import deepcopy
 
