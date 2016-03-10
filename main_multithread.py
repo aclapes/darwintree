@@ -315,7 +315,7 @@ if __name__ == "__main__":
     fullvideonames, videonames, class_labels, action_names, traintest_parts = get_dataset_info(xml_config)  # build dataset-related variable
 
     # Extract improved dense trajectories
-    tracklet_extraction.extract_multithread(fullvideonames, videonames, xml_config['features_list'], tracklets_path)
+    tracklet_extraction.extract_multithread(fullvideonames, videonames, xml_config['features_list'], tracklets_path, nt=xml_config['num_threads'])
     tracklet_clustering.cluster_multithread(tracklets_path, videonames, clusters_path)
 
     # BOVW-tree descriptor computation and classification
@@ -358,9 +358,9 @@ if __name__ == "__main__":
         tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                    feats_path + 'fvtree/', \
                                                                    treelike=True, clusters_path=clusters_path, nt=xml_config['num_threads'])
-        tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
-                                                                   feats_path + 'vdtree/', \
-                                                                   treelike=True, clusters_path=clusters_path, nt=xml_config['num_threads'])
+        # tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+        #                                                            feats_path + 'vdtree/', \
+        #                                                            treelike=True, clusters_path=clusters_path, nt=xml_config['num_threads'])
 
         st_time = time.time()
         # atep = kernels.compute_ATEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \

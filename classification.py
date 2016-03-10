@@ -264,8 +264,8 @@ def train_and_classify(input_kernels_tr, input_kernels_te, a, feat_types, class_
                             class_labels[tr_inds,k][val_tr_inds], class_labels[tr_inds,k][val_te_msk], \
                             c_j)
                         # TODO: decide what it is
-                        Rval_ap[k,i,j] += acc_tmp/skf.n_folds
-                        # Rval_ap[k,i,j] += (ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
+                        # Rval_ap[k,i,j] += acc_tmp/skf.n_folds
+                        Rval_ap[k,i,j] += (ap_tmp/skf.n_folds if acc_tmp > 0.5 else 0)
 
             a_bidx, c_bidx = np.unravel_index(Rval_ap[k].argmax(), Rval_ap[k].shape)  # a and c bests' indices
             S[k] = (C[k][0][a_bidx], C[k][1][c_bidx])
