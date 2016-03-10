@@ -365,12 +365,13 @@ if __name__ == "__main__":
         st_time = time.time()
         # atep = kernels.compute_ATEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
         #                                     kernels_path + 'atep-fv/', use_disk=False)
-        atep = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, traintest_parts, xml_config['features_list'], \
-                                            kernels_path + 'atep-vd/', use_disk=False, nt=xml_config['num_threads'])
         atnbep = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
                                                 kernels_path + 'atnbep-fv/', use_disk=False, nt=xml_config['num_threads'])
+        atep = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, traintest_parts, xml_config['features_list'], \
+                                            kernels_path + 'atep-vd/', use_disk=False, nt=xml_config['num_threads'])
+
         merged = [utils.merge_dictionaries([atep[i], atnbep[i]]) for i in xrange(len(atep))]
-        combs = [c for c in itertools.product(*[np.linspace(0, 0.05, 11),np.linspace(0, 1, 11),[1.]])]
+        combs = [c for c in itertools.product(*[np.linspace(0, 1, 11),np.linspace(0, 1, 11),[1.]])]
         results = classification.classify(merged, \
                                           class_labels, traintest_parts, combs, \
                                           xml_config['features_list'], \
