@@ -331,11 +331,12 @@ def uniform_weights_dist(n_weights, step=0.1):
 # Main
 # ==============================================================================
 
-# feat_weights = [[1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1], \
-#                 [0.5,0.5,0,0], [0.5,0,0.5,0], [0.5,0,0,0.5], [0,0.5,0.5,0], [0,0.5,0,0.5], [0,0,0.5,0.5], \
-#                 [0,0.333,0.333,0.333], [0.333,0,0.333,0.333], [0.333,0.333,0,0.333], [0.333,0.333,0.333,0], \
-#                 [0.25,0.25,0.25,0.25]]
-feat_weights = [[0,0,0,1], [0.25,0.25,0.25,0.25]]
+feat_weights = [[1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1], \
+                [0.5,0.5,0,0], [0.5,0,0.5,0], [0.5,0,0,0.5], [0,0.5,0.5,0], [0,0.5,0,0.5], [0,0,0.5,0.5], \
+                [0,0.333,0.333,0.333], [0.333,0,0.333,0.333], [0.333,0.333,0,0.333], [0.333,0.333,0.333,0], \
+                [0.25,0.25,0.25,0.25]]
+# feat_weights = [[0.25,0.25,0.25,0.25]]
+C_gbl = [1]  #[0.01, 0.05, 0.1] + np.linspace(0.5,10,20).tolist() + [20, 50, 100]
 
 if __name__ == "__main__":
     # prepare configuration-related variables
@@ -514,7 +515,7 @@ if __name__ == "__main__":
         results = classification.classify(atnbep_fv, \
                                           class_labels, traintest_parts, combs, \
                                           xml_config['features_list'], \
-                                          C=[1e-3, 1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5],
+                                          C=C_gbl,
                                           strategy='kernel_fusion')
         classification.print_results(results)
 
@@ -531,11 +532,11 @@ if __name__ == "__main__":
 
         merged = [utils.merge_dictionaries([atep_fv[i], atnbep_fv[i]]) for i in xrange(len(atep_fv))]
 
-        combs = [c for c in itertools.product(*[[[0,1],[0.5,0.5],[1,0]],[0.5],np.linspace(0,1,11), [[.25,.25,.25,.25]] ])]
+        combs = [c for c in itertools.product(*[[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), feat_weights])]
         results = classification.classify(merged, \
                                           class_labels, traintest_parts, combs, \
                                           xml_config['features_list'], \
-                                          C=[1e-3, 1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5],
+                                          C=C_gbl,
                                           strategy='kernel_fusion')
         classification.print_results(results)
 

@@ -235,7 +235,7 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
     # lb = LabelBinarizer(neg_label=-1, pos_label=1)
 
     class_ints = np.dot(class_labels, np.logspace(0, class_labels.shape[1]-1, class_labels.shape[1]))
-    skf = cross_validation.StratifiedKFold(class_ints[tr_inds], n_folds=4, shuffle=False, random_state=74)
+    skf = cross_validation.StratifiedKFold(class_ints[tr_inds], n_folds=2, shuffle=False, random_state=74)
 
     Rval = np.zeros((class_labels.shape[1], len(a), len(C)), dtype=np.float32)
     for k in xrange(class_labels.shape[1]):
@@ -325,7 +325,6 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
         kernels_te = deepcopy(input_kernels_te)
 
         for feat_t in kernels_tr.keys():
-            print feat_t
             if isinstance(kernels_tr[feat_t]['root'], tuple):
                 kernels_tr[feat_t]['root'], pr = utils.normalization(kernels_tr[feat_t]['root'][0])
                 kernels_te[feat_t]['root']     = pr * kernels_te[feat_t]['root'][0]
