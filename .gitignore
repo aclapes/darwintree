@@ -1,3 +1,6 @@
+*.py.save
+*.err
+*.out
 config.xml
 
 .DS_Store

@@ -34,12 +34,13 @@ def cluster_multiprocess(tracklets_path, videonames, st, num_videos, clusters_pa
 
 
 def cluster_multithread(tracklets_path, videonames, clusters_path, nt=4):
-    inds = np.random.permutation(len(videonames))
-    step = np.int(np.floor(len(inds)/nt)+1)
-    Parallel(n_jobs=nt, backend='threading')(delayed(_cluster)(tracklets_path, videonames, \
-                                                               inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
+    # inds = np.random.permutation(len(videonames))
+    inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
+    # step = np.int(np.floor(len(inds)/nt)+1)
+    Parallel(n_jobs=nt, backend='multiprocessing')(delayed(_cluster)(tracklets_path, videonames, \
+                                                               [i], \
                                                                clusters_path, visualize=False)
-                                             for i in xrange(nt))
+                                             for i in inds)
 
 
 def _cluster(tracklets_path, videonames, indices, clusters_path, visualize=False):
@@ -99,41 +100,43 @@ def _cluster(tracklets_path, videonames, indices, clusters_path, visualize=False
         # (Sec. 2.3.2 and 2.3.3)
         AB = np.hstack((A,B)).astype('float64')
 
-        ret = False
         ridge = INTERNAL_PARAMETERS['initial_ridge_value']
-        while not ret:
-            for _ in xrange(INTERNAL_PARAMETERS['tries_per_ridge_value']):
-                try:
-                    E_ = spectral_embedding_nystrom(AB, ridge=ridge)
-                    ret = True
-                    break
-                except IndefiniteError:
-                    pass
-                except NumericalError:
-                    pass
-
-            if not ret:
+        success = False
+        while not success:
+            try:
+                E_ = spectral_embedding_nystrom(AB, ridge=ridge)
+                success = True
+            except (IndefiniteError, NumericalError, ValueError) as e:
                 # warn the user
-                msg = "WARNING: increasing ridge, {0:.0e} -> {1:.0e}.\n"
-                sys.stderr.write(msg.format(ridge, ridge * 10))
-                sys.stderr.flush()
-                # increase the ridge value
-                ridge *= 10
+                # msg = "WARNING: increasing ridge, {0:.0e} -> {1:.0e}.\n"
+                # sys.stderr.write(msg.format(ridge, ridge * 10))
+                # sys.stderr.flush()
+                # # increase the ridge value
+                # if ridge >= 1e-6:
+                #     ridge = -1
+                #     break
+                # ridge *= 10
+                break
 
-        # re-organize E rows according to in- and out-sample indices
-        E = np.zeros(E_.shape, dtype=E_.dtype)
-        E[insample,:] = E_[:len(insample),:]
-        E[outsample,:] = E_[len(insample):,:]
+        if not success:
+            n_left = np.count_nonzero(data_obj[:,0] <= np.median(data_obj[:,0]))
+            best_labels = ([0] * n_left) + ([1] * (data_obj.shape[0]-n_left))
+            int_paths = ([2] * n_left) + ([3] * (data_obj.shape[0]-n_left))
+        else:
+            # re-organize E rows according to in- and out-sample indices
+            E = np.zeros(E_.shape, dtype=E_.dtype)
+            E[insample,:] = E_[:len(insample),:]
+            E[outsample,:] = E_[len(insample):,:]
 
-        # (Sec. 2.4)
-        best_labels, int_paths = spectral_clustering_division(E, data_obj[:,7:10])
+            # (Sec. 2.4)
+            best_labels, int_paths = spectral_clustering_division(E, data_obj[:,7:10])
         tree = reconstruct_tree_from_leafs(np.unique(int_paths))
 
         elapsed_time = time.time() - start_time
-        print('%s -> DONE (in %.2f secs)' % (clusters_path + videonames[i] + '.pkl', elapsed_time))
+        print('%s -> %s (in %.2f secs)' % (clusters_path + videonames[i] + '.pkl', 'YES' if success else 'NO', elapsed_time))
 
         with open(clusters_path + videonames[i] + '.pkl', 'wb') as f:
-            cPickle.dump({'best_labels' : best_labels, 'int_paths' : int_paths, 'tree' : tree}, f)
+            cPickle.dump({'best_labels' : best_labels, 'int_paths' : int_paths, 'tree' : tree, 'ridge' : ridge}, f)
 
         # DEBUG
         # -----

@@ -66,34 +66,25 @@ def compute_vd_descriptors_multiprocess(tracklets_path, intermediates_path, vide
 
 
 def compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                             nt=4, pca_reduction=True, treelike=True, clusters_path=None):
-    inds = np.random.permutation(len(videonames))
-    step = np.int(np.floor(len(inds)/nt)+1)
-    Parallel(n_jobs=nt, backend='threading')(delayed(_compute_bovw_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
-                                                                                inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
-                                                                                feat_types, feats_path, \
+                                         nt=4, pca_reduction=False, treelike=True, clusters_path=None):
+    Parallel(n_jobs=nt, backend='multiprocessing')(delayed(_compute_bovw_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
+                                                                                [i], feat_types, feats_path, \
                                                                                 pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
-                                                     for i in xrange(nt))
+                                                           for i in xrange(len(videonames)))
 
 def compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                                       nt=4, pca_reduction=True, treelike=True, clusters_path=None):
-    inds = np.random.permutation(len(videonames))
-    step = np.int(np.floor(len(inds)/nt)+1)
-    Parallel(n_jobs=nt, backend='threading')(delayed(_compute_fv_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
-                                                                              inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
-                                                                              feat_types, feats_path, \
+                                       nt=4, pca_reduction=False, treelike=True, clusters_path=None):
+    Parallel(n_jobs=nt, backend='multiprocessing')(delayed(_compute_fv_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
+                                                                              [i], feat_types, feats_path, \
                                                                               pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
-                                                     for i in xrange(nt))
+                                                           for i in xrange(len(videonames)))
 
 def compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                                       nt=4, pca_reduction=True, treelike=True, clusters_path=None):
-    inds = np.random.permutation(len(videonames))
-    step = np.int(np.floor(len(inds)/nt)+1)
-    Parallel(n_jobs=nt, backend='threading')(delayed(_compute_vd_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
-                                                                              inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
-                                                                              feat_types, feats_path, \
+                                       nt=4, pca_reduction=False, treelike=True, clusters_path=None):
+    Parallel(n_jobs=nt, backend='multiprocessing')(delayed(_compute_vd_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
+                                                                              [i], feat_types, feats_path, \
                                                                               pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
-                                                     for i in xrange(nt))
+                                                           for i in xrange(len(videonames)))
 
 
 # ==============================================================================
@@ -103,97 +94,119 @@ def compute_vd_descriptors_multithread(tracklets_path, intermediates_path, video
 
 def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
                               pca_reduction=True, treelike=True, clusters_path=None):
-    if not exists(feats_path):
+    try:
         makedirs(feats_path)
+    except OSError:
+        pass
 
     for k, part in enumerate(traintest_parts):
         # cach'd pca and gmm
-        cache = dict()
         for j, feat_t in enumerate(feat_types):
-            if not exists(feats_path + feat_t + '-' + str(k)):
+            try:
                 makedirs(feats_path + feat_t + '-' + str(k))
-            with open(intermediates_path + 'bovw' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
-                cache[feat_t] = cPickle.load(f)
+            except OSError:
+                pass
 
-        # process videos
-        total = len(videonames)
-        for i in indices:
-            # FV computed for all feature types? see
-            # the last in INTERNAL_PARAMETERS['feature_types']
-            for feat_t in feat_types:
-                output_filepath = join(feats_path, feat_types[-1] + '-' + str(k), videonames[i] + '.pkl')
-                if isfile(output_filepath):
-                    print('%s -> OK' % output_filepath)
-                    continue
-
-                start_time = time.time()
-
-                # object features used for the per-frame FV representation computation (cach'd)
-                with open(tracklets_path + 'obj/' + videonames[i] + '.pkl', 'rb') as f:
-                    obj = cPickle.load(f)
-
-                for j, feat_t in enumerate(feat_types):
-                    # load video tracklets' feature
-                    with open(tracklets_path + feat_t + '/' + videonames[i] + '.pkl', 'rb') as f:
-                        d = cPickle.load(f)
-                        if feat_t == 'trj': # (special case)
-                            d = convert_positions_to_displacements(d)
-
-                    # pre-processing
-                    d = rootSIFT(preprocessing.normalize(d, norm='l1', axis=1))  # section 3.1 from "improved dense trajectories)
-                    if pca_reduction:
-                        d = cache[feat_t]['pca'].transform(d)  # reduce dimensionality
-
-                    # compute BOVW of the video
-                    if not treelike:
-                        b = bovw(cache[feat_t]['codebook'], d)
-                        b = preprocessing.normalize(b, norm='l1')
-                        with open(output_filepath, 'wb') as f:
-                            cPickle.dump(dict(v=b), f)
-
-                    else:  # or separately the BOVWs of the tree nodes
-                        with open(clusters_path + videonames[i] + '.pkl', 'rb') as f:
-                            clusters = cPickle.load(f)
-
-                        T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
-                        bovwtree = dict()
-                        for parent_idx, children_inds in T.iteritems():
-                            # (in a global representation)
-                            node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
-                            b = bovw(cache[feat_t]['codebook'], d[node_inds,:])  # bovw vec
-                            bovwtree[parent_idx] = normalize(b, norm='l1')
-
-                        with open(output_filepath, 'wb') as f:
-                            cPickle.dump(dict(tree=bovwtree), f)
-
-                elapsed_time = time.time() - start_time
-                print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
-
-
-def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
-                            pca_reduction=True, treelike=True, clusters_path=None):
-    if not exists(feats_path):
-        makedirs(feats_path)
-
-    for k, part in enumerate(traintest_parts):
-        # cach'd pca and gmm
-        cache = dict()
-        for j, feat_t in enumerate(feat_types):
-            if not exists(feats_path + feat_t + '-' + str(k)):
-                makedirs(feats_path + feat_t + '-' + str(k))
-            with open(intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
-                cache[feat_t] = cPickle.load(f)
+        cache = None
 
         # process videos
         total = len(videonames)
         for i in indices:
             # FV computed for all feature types? see the last in INTERNAL_PARAMETERS['feature_types']
-            output_filepath = join(feats_path, feat_types[-1] + '-' + str(k), videonames[i] + '.pkl')
-            if isfile(output_filepath):
+            all_done = np.all([isfile(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'))
+                               for feat_t in feat_types])
+            if all_done:
                 # for j, feat_t in enumerate(feat_types):
                 #     featnames.setdefault(feat_t, []).append(feats_path + feat_t + '/' + videonames[i] + '-fvtree.pkl')
-                print('%s -> OK' % output_filepath)
+                print('%s -> OK' % videonames[i])
                 continue
+
+            if cache is None:
+                cache = dict()
+                for j, feat_t in enumerate(feat_types):
+                    with open(intermediates_path + 'bovw' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
+                        cache[feat_t] = cPickle.load(f)
+
+            start_time = time.time()
+
+            # object features used for the per-frame FV representation computation (cach'd)
+            with open(tracklets_path + 'obj/' + videonames[i] + '.pkl', 'rb') as f:
+                obj = cPickle.load(f)
+
+            for j, feat_t in enumerate(feat_types):
+                # load video tracklets' feature
+                with open(tracklets_path + feat_t + '/' + videonames[i] + '.pkl', 'rb') as f:
+                    d = cPickle.load(f)
+                    if feat_t == 'trj': # (special case)
+                        d = convert_positions_to_displacements(d)
+
+                # pre-processing
+                d = rootSIFT(preprocessing.normalize(d, norm='l1', axis=1))  # section 3.1 from "improved dense trajectories)
+                if pca_reduction:
+                    d = cache[feat_t]['pca'].transform(d)  # reduce dimensionality
+
+                output_filepath = join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl')
+                # compute BOVW of the video
+                if not treelike:
+                    b = bovw(cache[feat_t]['codebook'], d)
+                    b = preprocessing.normalize(b, norm='l1')
+                    with open(output_filepath, 'wb') as f:
+                        cPickle.dump(dict(v=b), f)
+
+                else:  # or separately the BOVWs of the tree nodes
+                    with open(clusters_path + videonames[i] + '.pkl', 'rb') as f:
+                        clusters = cPickle.load(f)
+
+                    T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
+                    bovwtree = dict()
+                    for parent_idx, children_inds in T.iteritems():
+                        # (in a global representation)
+                        node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
+                        b = bovw(cache[feat_t]['codebook'], d[node_inds,:])  # bovw vec
+                        bovwtree[parent_idx] = normalize(b, norm='l1')
+
+                    with open(output_filepath, 'wb') as f:
+                        cPickle.dump(dict(tree=bovwtree), f)
+
+            elapsed_time = time.time() - start_time
+            print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
+
+
+def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
+                            pca_reduction=False, treelike=True, clusters_path=None):
+    try:
+        makedirs(feats_path)
+    except OSError:
+        pass
+
+    for k, part in enumerate(traintest_parts):
+        # cach'd pca and gmm
+
+        for j, feat_t in enumerate(feat_types):
+            try:
+                makedirs(feats_path + feat_t + '-' + str(k))
+            except OSError:
+                pass
+
+        cache = None
+
+        # process videos
+        total = len(videonames)
+        for i in indices:
+            # FV computed for all feature types? see the last in INTERNAL_PARAMETERS['feature_types']
+            all_done = np.all([isfile(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'))
+                               for feat_t in feat_types])
+            if all_done:
+                # for j, feat_t in enumerate(feat_types):
+                #     featnames.setdefault(feat_t, []).append(feats_path + feat_t + '/' + videonames[i] + '-fvtree.pkl')
+                print('%s -> OK' % videonames[i])
+                continue
+
+            if cache is None:
+                cache = dict()
+                for j, feat_t in enumerate(feat_types):
+                    with open(intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
+                        cache[feat_t] = cPickle.load(f)
 
             start_time = time.time()
 
@@ -204,6 +217,9 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
                 clusters = cPickle.load(f)
 
             for j, feat_t in enumerate(feat_types):
+                if isfile(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl')):
+                    continue
+
                 # load video tracklets' feature
                 with open(tracklets_path + feat_t + '/' + videonames[i] + '.pkl', 'rb') as f:
                     d = cPickle.load(f)
@@ -222,18 +238,22 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
                 # compute FV of the video
                 if not treelike:
                     fv = ynumpy.fisher(cache[feat_t]['gmm'], d, INTERNAL_PARAMETERS['fv_repr_feats'])  # fisher vec
-                    fv = preprocessing.normalize(fv)
+                    fv = normalize(rootSIFT(fv,p=0.5), norm='l2')
                     with open(output_filepath, 'wb') as f:
                         cPickle.dump(dict(v=fv), f)
 
                 else:  # or separately the FVs of the tree nodes
-                    T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
                     fvtree = dict()
-                    for parent_idx, children_inds in T.iteritems():
-                        # (in a global representation)
-                        node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
-                        fv = ynumpy.fisher(cache[feat_t]['gmm'], d[node_inds,:], INTERNAL_PARAMETERS['fv_repr_feats'])  # fisher vec
-                        fvtree[parent_idx] = normalize(rootSIFT(fv,p=0.5), norm='l2')  # https://www.robots.ox.ac.uk/~vgg/rg/papers/peronnin_etal_ECCV10.pdf
+                    if len(clusters['tree']) == 1:
+                        fv = ynumpy.fisher(cache[feat_t]['gmm'], d, INTERNAL_PARAMETERS['fv_repr_feats'])  # fisher vec
+                        fvtree[1] = normalize(rootSIFT(fv,p=0.5), norm='l2')
+                    else:
+                        T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
+                        for parent_idx, children_inds in T.iteritems():
+                            # (in a global representation)
+                            node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
+                            fv = ynumpy.fisher(cache[feat_t]['gmm'], d[node_inds,:], INTERNAL_PARAMETERS['fv_repr_feats'])  # fisher vec
+                            fvtree[parent_idx] = normalize(rootSIFT(fv,p=0.5), norm='l2')  # https://www.robots.ox.ac.uk/~vgg/rg/papers/peronnin_etal_ECCV10.pdf
 
                     with open(output_filepath, 'wb') as f:
                         cPickle.dump(dict(tree=fvtree), f)
@@ -244,28 +264,39 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
 
 def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
                             pca_reduction=True, treelike=True, clusters_path=None):
-    if not exists(feats_path):
+    try:
         makedirs(feats_path)
+    except OSError:
+        pass
 
     for k, part in enumerate(traintest_parts):
         # cach'd pca and gmm
-        cache = dict()
+
         for j, feat_t in enumerate(feat_types):
-            if not exists(feats_path + feat_t + '-' + str(k)):
+            try:
                 makedirs(feats_path + feat_t + '-' + str(k))
-            with open(intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
-                cache[feat_t] = cPickle.load(f)
+            except OSError:
+                pass
+
+        cache = None
 
         # process videos
         total = len(videonames)
         for i in indices:
             # FV computed for all feature types? see the last in INTERNAL_PARAMETERS['feature_types']
-            output_filepath = join(feats_path, feat_types[-1] + '-' + str(k), videonames[i] + '.pkl')
-            if isfile(output_filepath):
+            all_done = np.all([isfile(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'))
+                   for feat_t in feat_types])
+            if all_done:
                 # for j, feat_t in enumerate(feat_types):
                 #     featnames.setdefault(feat_t, []).append(feats_path + feat_t + '/' + videonames[i] + '-fvtree.pkl')
-                print('%s -> OK' % output_filepath)
+                print('%s -> OK' % videonames[i])
                 continue
+
+            if cache is None:
+                cache = dict()
+                for j, feat_t in enumerate(feat_types):
+                    with open(intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
+                        cache[feat_t] = cPickle.load(f)
 
             start_time = time.time()
 
@@ -276,6 +307,9 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                 clusters = cPickle.load(f)
 
             for j, feat_t in enumerate(feat_types):
+                if isfile(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl')):
+                    continue
+
                 # load video tracklets' feature
                 with open(tracklets_path + feat_t + '/' + videonames[i] + '.pkl', 'rb') as f:
                     d = cPickle.load(f)
@@ -307,19 +341,25 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                         cPickle.dump(dict(v=vd), f)
 
                 else:  # or separately the FVs of the tree nodes
-                    T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
                     vdtree = dict()
-                    for parent_idx, children_inds in T.iteritems():
-                        # (in a per-frame representation)
-                        node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
-                        fids = np.unique(obj[node_inds,0])
-                        # dim = INTERNAL_PARAMETERS['fv_gmm_k'] * len(INTERNAL_PARAMETERS['fv_repr_feats']) * d.shape[1]
-                        V = []
-                        for f in fids:
-                            tmp = d[np.where(obj[node_inds,0] == f)[0],:]
-                            fv = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])
-                            V.append(fv)  # no normalization or nothing (it's done when computing darwin)
-                        vdtree[parent_idx] = normalize(videodarwin.darwin(np.array(V)))
+                    if len(clusters['tree']) == 1:
+                        fids = np.unique(obj[:,0])
+                        V = [ynumpy.fisher(cache[feat_t]['gmm'], d[np.where(obj[:,0] == f)[0],:], INTERNAL_PARAMETERS['fv_repr_feats'])
+                             for f in fids]
+                        vdtree[1] = normalize(videodarwin.darwin(np.array(V)))
+                    else:
+                        T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
+                        for parent_idx, children_inds in T.iteritems():
+                            # (in a per-frame representation)
+                            node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
+                            fids = np.unique(obj[node_inds,0])
+                            # dim = INTERNAL_PARAMETERS['fv_gmm_k'] * len(INTERNAL_PARAMETERS['fv_repr_feats']) * d.shape[1]
+                            V = []
+                            for f in fids:
+                                tmp = d[np.where(obj[node_inds,0] == f)[0],:]
+                                fv = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])
+                                V.append(fv)  # no normalization or nothing (it's done when computing darwin)
+                            vdtree[parent_idx] = normalize(videodarwin.darwin(np.array(V)))
 
                     with open(output_filepath, 'wb') as f:
                         cPickle.dump(dict(tree=vdtree), f)
@@ -328,9 +368,11 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
             print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
 
-def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=False, nt=4):
-    if not exists(intermediates_path):
+def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=True, nt=1):
+    try:
         makedirs(intermediates_path)
+    except OSError:
+        pass
 
     for k, part in enumerate(traintest_parts):
         train_inds = np.where(part <= 0)[0]  # train codebook for each possible training parition
@@ -387,8 +429,8 @@ def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types
             # train codebook for later BOVW computation
             D = np.ascontiguousarray(D, dtype=np.float32)
             cb = ynumpy.kmeans(D, INTERNAL_PARAMETERS['bovw_codebook_k'], \
-                               distance_type=2, nt=nt, niter=20, seed=0, redo=3, \
-                               verbose=True, normalize=False, init='random')
+                               distance_type=2, nt=nt, niter=20, seed=0, redo=1, \
+                               verbose=True, normalize=False, init='kmeans++')
 
             with open(output_filepath, 'wb') as f:
                 cPickle.dump(dict(pca=(pca if pca_reduction else None), codebook=cb), f)
@@ -397,9 +439,11 @@ def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types
             print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
 
 
-def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=True, nt=4):
-    if not exists(intermediates_path):
+def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=False, nt=4):
+    try:
         makedirs(intermediates_path)
+    except OSError:
+        pass
 
     for k, part in enumerate(traintest_parts):
         train_inds = np.where(part <= 0)[0]  # train codebook for each possible training parition
@@ -418,6 +462,7 @@ def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, inter
             D = None  # feat_t's sampled tracklets
             ptr = 0
             for j in range(0, total):
+                print j, total
                 idx = train_inds[j]
 
                 filepath = tracklets_path + feat_t + '/' + videonames[idx] + '.pkl'
@@ -456,7 +501,7 @@ def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, inter
 
             # train GMMs for later FV computation
             D = np.ascontiguousarray(D, dtype=np.float32)
-            gmm = ynumpy.gmm_learn(D, INTERNAL_PARAMETERS['fv_gmm_k'], nt=nt, niter=100, redo=3)
+            gmm = ynumpy.gmm_learn(D, INTERNAL_PARAMETERS['fv_gmm_k'], nt=nt, niter=500, redo=1)
 
             with open(output_filepath, 'wb') as f:
                 cPickle.dump(dict(pca=(pca if pca_reduction else None), gmm=gmm), f)
@@ -480,9 +525,15 @@ def convert_positions_to_displacements(P):
     Vx = X[:,1:] - X[:,:-1]  # get relative displacement (velocity vector)
     Vy = Y[:,1:] - Y[:,:-1]
 
+    # D = np.zeros((P.shape[0], Vx.shape[1]+Vy.shape[1]), dtype=P.dtype)
+    # normx = np.linalg.norm(Vx, ord=2, axis=1)[:,np.newaxis]
+    # normy = np.linalg.norm(Vy, ord=2, axis=1)[:,np.newaxis]
+    # D[:,::2]  = Vx / normx  # l2-normalize
+    # D[:,1::2] = Vy / normy
+
     D = np.zeros((P.shape[0], Vx.shape[1]+Vy.shape[1]), dtype=P.dtype)
-    D[:,::2]  = Vx / np.linalg.norm(Vx, ord=2, axis=1)[:,np.newaxis]  # l2-normalize
-    D[:,1::2] = Vy / np.linalg.norm(Vy, ord=2, axis=1)[:,np.newaxis]
+    D[:,::2]  = Vx
+    D[:,1::2] = Vy
 
     return D
 

@@ -41,7 +41,7 @@ def merge_pair_of_dictionaries(dst, src):
                     if not isinstance(current_dst[key], list):
                         current_dst[key] = [current_dst[key], current_src[key]]  # there is hit
                     else:
-                        current_dst[key] += [current_src[key]] if not isinstance(current_src[key],list) else current_src[key]  # create a list and keep both, do not overwrite
+                        current_dst[key].append( (current_src[key]) if not isinstance(current_src[key],list) else current_src[key] )  # create a list and keep both, do not overwrite
     return dst
 
 
@@ -63,23 +63,59 @@ def sum_of_arrays(arrays, weights=None, norm=None, gamma=None):
     if weights is None:
         weights = [1.0/len(arrays)] * len(arrays)
     if norm is 'median':
-        A, _ = normalize_by_median(arrays[0])
+        A, _ = normalize(arrays[0], norm)
     if norm is 'sqrt':
         A = np.sqrt(arrays[0])
 
-    S = weights[0] * (arrays[0] if norm is None else A) # element-wise sumation of arrays
-    for i in range(1,len(arrays)):
-        if norm is 'median':
-            A, _ = normalize_by_median(arrays[i])
-        elif norm is 'sqrt':
-            A = np.sqrt(arrays[i])
+    if isinstance(arrays, np.ndarray):
+        S = weights[0] * (arrays if norm is None else A)
+    else:
+        S = weights[0] * (arrays[0] if norm is None else A) # element-wise sumation of arrays
+        if isinstance(arrays, list):
+            for i in range(1,len(arrays)):
+                if norm is 'median':
+                    A, _ = normalize(arrays[i], norm)
+                elif norm is 'sqrt':
+                    A = np.sqrt(arrays[i])
 
-        S += weights[i] * (arrays[i] if norm is None else A)  # accumulate next array
+                S += weights[i] * (arrays[i] if norm is None else A)  # accumulate next array
 
     return S
 
-def normalize_by_median(K, p=None):
-    if p is None:
-        values = K[K != 0]
-        p = 1.0 / np.median(values) if values != [] else 1
-    return p*K, p
+# def normalize_by_median(K, p=None):
+#     if p is None:
+#         values = K[K != 0]
+#         p = 1.0 / np.nanmedian(values) if values != [] else 1.0
+#     return p*K, p
+
+# def normalization(K,type='median'):
+#     p = 1.0
+#
+#     values = K[K != 0]
+#     if values != []:
+#         if type == 'mean':
+#             p = 1.0/np.nanmean(values)
+#         elif type == 'median':
+#             p = 1.0/np.nanmedian(values)
+#
+#     return K, p
+
+def normalize(K, type='median'):
+    p = argnormalize(K, type=type)
+    return p * K
+
+def normalization(K, type='median'):
+    p = argnormalize(K, type=type)
+    return p * K, p
+
+def argnormalize(K,type='median'):
+    p = 1.0
+
+    values = K[K != 0]
+    if values != []:
+        if type == 'mean':
+            p = 1.0/np.nanmean(values)
+        elif type == 'median':
+            p = 1.0/np.nanmedian(values)
+
+    return p

@@ -5,19 +5,19 @@ import subprocess
 from sklearn.neighbors import KDTree
 import time
 import cPickle
-from os.path import isfile, exists
+from os.path import isfile, exists, join
 from os import makedirs
 import fileinput
 from spectral_division import build_geom_neighbor_graph
 import pyflann
 from joblib import delayed, Parallel
-
+import sys
 
 # some hard-coded constants
 FEATURE_EXTRACTOR_RELPATH = 'release/'
 
 INTERNAL_PARAMETERS = dict(
-    L = 5,
+    L = 15,
     feats_dict = dict(
         obj = 10,
         trj = 2,
@@ -42,12 +42,14 @@ def extract_multiprocess(fullvideonames, videonames, st, num_videos, feat_types,
 
 
 def extract_multithread(fullvideonames, videonames, feat_types, tracklets_path, nt=4):
-    inds = np.random.permutation(len(videonames))
-    step = np.int(np.floor(len(inds)/nt)+1)
-    Parallel(n_jobs=nt, backend='threading')(delayed(_extract)(fullvideonames, videonames, \
-                                                               inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))], \
+    # inds = np.random.permutation(len(videonames))
+    inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
+    # step = np.int(np.floor(len(inds)/nt)+1)
+    #inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))],
+    Parallel(n_jobs=nt, backend='multiprocessing')(delayed(_extract)(fullvideonames, videonames, \
+                                                               [i], \
                                                                feat_types, tracklets_path)
-                                             for i in xrange(nt))
+                                             for i in inds)
 
 
 def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path):
@@ -63,34 +65,58 @@ def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path):
     feats_beginend = get_features_beginend(INTERNAL_PARAMETERS['feats_dict'], INTERNAL_PARAMETERS['L'])
 
     # prepare output directories
-    if not exists('tmpfiles/'):
+    try:
         makedirs('tmpfiles/')
-    if not exists(tracklets_path):
+    except OSError:
+        pass
+
+    try:
         makedirs(tracklets_path)
+    except OSError:
+        pass
+
     for feat_t in feats_beginend.keys():
-        if not exists(tracklets_path + feat_t + '/'):
+        try:
             makedirs(tracklets_path + feat_t + '/')
+        except OSError:
+            pass
 
     # process the videos
     total = len(fullvideonames)
     for i in indices:
-        if isfile(tracklets_path + 'obj/' + videonames[i] + '.pkl'):
+        all_done = np.all([isfile(join(tracklets_path, feat_t, videonames[i] + '.pkl'))
+                           for feat_t in feats_beginend.keys()])
+        if all_done:
             print('%s -> OK' % fullvideonames[i])
             continue
 
         start_time = time.time()
         # extract the features into temporary file
-        if not isfile('tmpfiles/' + videonames[i] + '.tmp'):
-            extract_wang_features(fullvideonames[i], INTERNAL_PARAMETERS['L'], 'tmpfiles/' + videonames[i] + '.tmp')
+        tracklets_filepath = join('tmpfiles/', videonames[i] + '.tmp')
+        if not isfile(tracklets_filepath):
+            extract_wang_features(fullvideonames[i], INTERNAL_PARAMETERS['L'], tracklets_filepath)
 
         # read the temporary file to numpy array
         data = []
-        for line in fileinput.input(['tmpfiles/' + videonames[i] + '.tmp']):
-            data.append(np.array(line.strip().split('\t'), dtype=np.float32))
-        data = np.array(data, dtype=np.float32)
+        for line in fileinput.input(tracklets_filepath):
+            row = np.array(line.strip().split('\t'), dtype=np.float32)
+            data.append(row)
+
+        try:
+            data = np.vstack(data)
+        except ValueError:
+            # empty row
+            sys.stderr.write("[Error] Reading tracklets file: " + tracklets_filepath + '\n')
+            sys.stderr.flush()
+            continue
 
         # filter low density tracklets
-        inliers = filter_low_density(data)
+        try:
+            inliers = filter_low_density(data)
+        except:
+            sys.stderr.write("[Error] Filtering low density: " + tracklets_filepath + '\n')
+            sys.stderr.flush()
+            continue
 
         # store feature types separately
         for feat_t in feats_beginend.keys():
