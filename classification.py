@@ -30,7 +30,7 @@ rbf_parameters = {'n_estimators': [10,20,30,40],
 #         kernels_train[i]['train']
 
 
-def classify(input_kernels, class_labels, traintest_parts, a, feat_types, strategy='kernel_fusion', C=[1]):
+def classify(input_kernels, class_labels, traintest_parts, a, feat_types, strategy='kernel_fusion', C=[1], opt_criterion='acc'):
     '''
     TODO Fill this.
     :param feats_path:
@@ -49,11 +49,14 @@ def classify(input_kernels, class_labels, traintest_parts, a, feat_types, strate
         kernels_train = input_kernels[k]['train']
         kernels_test  = input_kernels[k]['test']
         if strategy == 'kernel_fusion':
-            results[k] = kernel_fusion_classification(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), C=C)
+            results[k] = kernel_fusion_classification(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), \
+                                                      C=C, opt_criterion=opt_criterion)
         elif strategy == 'simple_voting':
-            results[k] = simple_voting_classification(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), C=C)
+            results[k] = simple_voting_classification(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), \
+                                                      C=C, opt_criterion=opt_criterion)
         elif strategy == 'learning_based_fusion':
-            results[k] = learning_based_fusion_classification(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), C=C)
+            results[k] = learning_based_fusion_classification(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), \
+                                                              C=C, opt_criterion=opt_criterion)
 
     return results
 
@@ -213,7 +216,8 @@ def classify(input_kernels, class_labels, traintest_parts, a, feat_types, strate
 #     return dict(acc_classes=acc_classes, ap_classes=ap_classes)
 
 
-def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_types, class_labels, train_test_idx, C=[1]):
+def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_types, class_labels, train_test_idx, \
+                                 C=[1], square_kernels=False, opt_criterion='acc'):
     '''
 
     :param kernels_tr:
@@ -235,7 +239,7 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
     # lb = LabelBinarizer(neg_label=-1, pos_label=1)
 
     class_ints = np.dot(class_labels, np.logspace(0, class_labels.shape[1]-1, class_labels.shape[1]))
-    skf = cross_validation.StratifiedKFold(class_ints[tr_inds], n_folds=2, shuffle=False, random_state=74)
+    skf = cross_validation.StratifiedKFold(class_ints[tr_inds], n_folds=4, shuffle=False, random_state=74)
 
     Rval = np.zeros((class_labels.shape[1], len(a), len(C)), dtype=np.float32)
     for k in xrange(class_labels.shape[1]):
@@ -253,11 +257,19 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
                     kernels_tr[feat_t] = a_i[2]*np.array(kernels_tr[feat_t]['root']) + (1-a_i[2])*np.array(kernels_tr[feat_t]['nodes'])
 
                 else:
-                    kernels_tr[feat_t]['root']  = [utils.normalize(x[0])
-                                                   for x in kernels_tr[feat_t]['root']]
+                    kernels_tr[feat_t]['root']  = [utils.normalize(x[0] if np.sum(x[0])>0 else kernels_tr[feat_t]['nodes'][j][0])
+                                                   for j,x in enumerate(kernels_tr[feat_t]['root'])]
                     kernels_tr[feat_t]['nodes'] = [utils.normalize(a_i[1]*x[0]+(1-a_i[1])*x[1] if len(x)==2 else x[0])
                                                    for x in kernels_tr[feat_t]['nodes']]
 
+                    # for j,Kr in enumerate(kernels_tr[feat_t]['root']):
+                    #     K = None
+                    #     if np.sum(Kr) > 0:
+                    #         K = a_i[2]*Kr + (1-a_i[2])*kernels_tr[feat_t]['nodes'][j]
+                    #     else:
+                    #         K = kernels_tr[feat_t]['nodes'][j]
+                    #     kernels_tmp.append(K)
+                    # kernels_tr[feat_t] = kernels_tmp
                     kernels_tr[feat_t] = list(a_i[2]*np.array(kernels_tr[feat_t]['root']) + (1-a_i[2])*np.array(kernels_tr[feat_t]['nodes']))
 
             K_tr = None
@@ -267,7 +279,8 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
                     K_tr = np.zeros(kernels_tr[feat_t].shape if isinstance(kernels_tr[feat_t],np.ndarray) else kernels_tr[feat_t][0].shape, dtype=np.float32)
                 K_tr += a_i[3][j] * utils.sum_of_arrays(kernels_tr[feat_t], a_i[0])
 
-            # K_tr = np.sqrt(K_tr)
+            if square_kernels:
+                K_tr = np.sqrt(K_tr)
 
             for j, c_j in enumerate(C):
                 # print l, str(i+1) + '/' + str(len(C[k][0])), str(j+1) + '/' + str(len(C[k][1]))
@@ -283,9 +296,11 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
                         K_tr[val_tr_inds,:][:,val_tr_inds], K_tr[val_te_msk,:][:,val_tr_inds], \
                         class_labels[tr_inds,k][val_tr_inds], class_labels[tr_inds,k][val_te_msk], \
                         c_j)
-                    # TODO: decide what it is
-                    Rval[k,i,j] += acc_tmp/skf.n_folds
-                    # Rval[k,i,j] += (ap_tmp/skf.n_folds if acc_tmp > 0.51 else 0)
+
+                    if str.lower(opt_criterion) == 'map':
+                        Rval[k,i,j] += ap_tmp/skf.n_folds if acc_tmp > 0.50 else 0
+                    else: # 'acc' or other criterion
+                        Rval[k,i,j] += acc_tmp/skf.n_folds
 
     # print p, np.mean(p)
 
@@ -337,8 +352,10 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
                 kernels_te[feat_t] = a_best[2]*kernels_te[feat_t]['root'] + (1-a_best[2])*kernels_te[feat_t]['nodes']
             else:
                 for i in xrange(len(kernels_tr[feat_t]['root'])):
-                    kernels_tr[feat_t]['root'][i], pr  = utils.normalization(kernels_tr[feat_t]['root'][i][0])
-                    kernels_te[feat_t]['root'][i]      = pr * kernels_te[feat_t]['root'][i][0]
+                    kernels_tr[feat_t]['root'][i], pr  = utils.normalization(kernels_tr[feat_t]['root'][i][0] if np.sum(kernels_tr[feat_t]['root'][i][0]) > 0
+                                                                             else kernels_tr[feat_t]['nodes'][i][0])
+                    kernels_te[feat_t]['root'][i]      = pr * (kernels_te[feat_t]['root'][i][0] if np.sum(kernels_tr[feat_t]['root'][i][0]) > 0
+                                                               else kernels_te[feat_t]['nodes'][i][0])
 
                     xn_tr, xn_te = kernels_tr[feat_t]['nodes'][i], kernels_te[feat_t]['nodes'][i]
                     kernels_tr[feat_t]['nodes'][i], pn = utils.normalization(a_best[1]*xn_tr[0]+(1-a_best[1])*xn_tr[1] if len(xn_tr)==2 else xn_tr[0])
@@ -346,22 +363,6 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
 
                 kernels_tr[feat_t] = list(a_best[2]*np.array(kernels_tr[feat_t]['root']) + (1-a_best[2])*np.array(kernels_tr[feat_t]['nodes']))
                 kernels_te[feat_t] = list(a_best[2]*np.array(kernels_te[feat_t]['root']) + (1-a_best[2])*np.array(kernels_te[feat_t]['nodes']))
-
-        # for feat_t in kernels_tr.keys():
-        #     for tree_t in kernels_tr[feat_t].keys():
-        #         kernels_tr[feat_t][tree_t] = list(kernels_tr[feat_t][tree_t])
-        #         kernels_te[feat_t][tree_t] = list(kernels_te[feat_t][tree_t])
-        #         for i,x in enumerate(kernels_tr[feat_t][tree_t]):
-        #             x_tr = a_best[1]*x[0]+(1-a_best[1])*x[1] if (isinstance(x,tuple) and len(x)>1) else 2*x[0]
-        #             p = utils.argnormalize(x_tr)
-        #             kernels_tr[feat_t][tree_t][i] = p*x_tr
-        #
-        #             x = kernels_te[feat_t][tree_t][i]
-        #             x_te = a_best[1]*x[0]+(1-a_best[1])*x[1] if (isinstance(x,tuple) and len(x)>1) else 2*x[0]
-        #             kernels_te[feat_t][tree_t][i] = p*x_te
-        #
-        #     kernels_tr[feat_t] = list(a_best[2]*np.array(kernels_tr[feat_t]['root']) + (1-a_best[2])*np.array(kernels_tr[feat_t]['nodes']))
-        #     kernels_te[feat_t] = list(a_best[2]*np.array(kernels_te[feat_t]['root']) + (1-a_best[2])*np.array(kernels_te[feat_t]['nodes']))
 
         K_tr = K_te = None
         # Weight each channel accordingly
@@ -372,7 +373,8 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
             K_tr += a_best[3][j] * utils.sum_of_arrays(kernels_tr[feat_t], a_best[0])
             K_te += a_best[3][j] * utils.sum_of_arrays(kernels_te[feat_t], a_best[0])
 
-        # K_tr, K_te = np.sqrt(K_tr), np.sqrt(K_te)
+        if square_kernels:
+            K_tr, K_te = np.sqrt(K_tr), np.sqrt(K_te)
         acc, ap = _train_and_classify_binary(K_tr, K_te[te_msk], class_labels[tr_inds,k], class_labels[te_inds,k][te_msk], c=c_best)
 
         acc_classes.append(acc)

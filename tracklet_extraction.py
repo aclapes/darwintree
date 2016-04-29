@@ -46,7 +46,7 @@ def extract_multithread(fullvideonames, videonames, feat_types, tracklets_path, 
     inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
     # step = np.int(np.floor(len(inds)/nt)+1)
     #inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))],
-    Parallel(n_jobs=nt, backend='multiprocessing')(delayed(_extract)(fullvideonames, videonames, \
+    Parallel(n_jobs=nt, backend='threading')(delayed(_extract)(fullvideonames, videonames, \
                                                                [i], \
                                                                feat_types, tracklets_path)
                                              for i in inds)

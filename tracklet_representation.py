@@ -31,35 +31,35 @@ INTERNAL_PARAMETERS = dict(
 
 
 def compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                             pca_reduction=True, treelike=True, clusters_path=None):
+                             pca_reduction=False, treelike=True, clusters_path=None):
     _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
                               pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
 
 def compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                           pca_reduction=True, treelike=True, clusters_path=None):
+                           pca_reduction=False, treelike=True, clusters_path=None):
     _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
                             pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
 
 def compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                           pca_reduction=True, treelike=True, clusters_path=None):
+                           pca_reduction=False, treelike=True, clusters_path=None):
     _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
                             pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
 
 
 def compute_bovw_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
-                                          pca_reduction=True, treelike=True, clusters_path=None):
+                                          pca_reduction=False, treelike=True, clusters_path=None):
     inds = np.linspace(st, st+num_videos-1, num_videos)
     _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
                               pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
 
 def compute_fv_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
-                                        pca_reduction=True, treelike=True, clusters_path=None):
+                                        pca_reduction=False, treelike=True, clusters_path=None):
     inds = np.linspace(st, st+num_videos-1, num_videos)
     _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
                             pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
 
 def compute_vd_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
-                                        pca_reduction=True, treelike=True, clusters_path=None):
+                                        pca_reduction=False, treelike=True, clusters_path=None):
     inds = np.linspace(st, st+num_videos-1, num_videos)
     _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
                             pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
@@ -67,21 +67,21 @@ def compute_vd_descriptors_multiprocess(tracklets_path, intermediates_path, vide
 
 def compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
                                          nt=4, pca_reduction=False, treelike=True, clusters_path=None):
-    Parallel(n_jobs=nt, backend='multiprocessing')(delayed(_compute_bovw_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
+    Parallel(n_jobs=nt, backend='threading')(delayed(_compute_bovw_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
                                                                                 [i], feat_types, feats_path, \
                                                                                 pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
                                                            for i in xrange(len(videonames)))
 
 def compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
                                        nt=4, pca_reduction=False, treelike=True, clusters_path=None):
-    Parallel(n_jobs=nt, backend='multiprocessing')(delayed(_compute_fv_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
+    Parallel(n_jobs=nt, backend='threading')(delayed(_compute_fv_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
                                                                               [i], feat_types, feats_path, \
                                                                               pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
                                                            for i in xrange(len(videonames)))
 
 def compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
                                        nt=4, pca_reduction=False, treelike=True, clusters_path=None):
-    Parallel(n_jobs=nt, backend='multiprocessing')(delayed(_compute_vd_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
+    Parallel(n_jobs=nt, backend='threading')(delayed(_compute_vd_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
                                                                               [i], feat_types, feats_path, \
                                                                               pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
                                                            for i in xrange(len(videonames)))
@@ -93,7 +93,7 @@ def compute_vd_descriptors_multithread(tracklets_path, intermediates_path, video
 
 
 def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
-                              pca_reduction=True, treelike=True, clusters_path=None):
+                              pca_reduction=False, treelike=True, clusters_path=None):
     try:
         makedirs(feats_path)
     except OSError:
@@ -263,7 +263,7 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
 
 
 def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
-                            pca_reduction=True, treelike=True, clusters_path=None):
+                            pca_reduction=False, treelike=True, clusters_path=None):
     try:
         makedirs(feats_path)
     except OSError:
@@ -368,7 +368,7 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
             print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
 
-def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=True, nt=1):
+def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=False, nt=1):
     try:
         makedirs(intermediates_path)
     except OSError:
@@ -388,32 +388,7 @@ def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types
 
             start_time = time.time()
 
-            D = None  # feat_t's sampled tracklets
-            ptr = 0
-            for j in range(0, total):
-                idx = train_inds[j]
-
-                filepath = tracklets_path + feat_t + '/' + videonames[idx] + '.pkl'
-                if not isfile(filepath):
-                    sys.stderr.write('# ERROR: missing training instance'
-                                     ' {}\n'.format(filepath))
-                    sys.stderr.flush()
-                    quit()
-
-                with open(filepath, 'rb') as f:
-                    d = cPickle.load(f)
-
-                # init sample
-                if D is None:
-                    D = np.zeros((INTERNAL_PARAMETERS['n_samples'], d.shape[1]), dtype=np.float32)
-                # create a random permutation for sampling some tracklets in this vids
-                randp = np.random.permutation(d.shape[0])
-                if d.shape[0] > num_samples_per_vid:
-                    randp = randp[:num_samples_per_vid]
-                D[ptr:ptr+len(randp),:] = d[randp,:]
-                ptr += len(randp)
-            D = D[:ptr,:]  # cut out extra reserved space
-
+            D = load_tracklets_sample(tracklets_path, videonames, train_inds, feat_t, num_samples_per_vid)
 
             # (special case) trajectory features are originally positions
             if feat_t == 'trj':
@@ -429,7 +404,7 @@ def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types
             # train codebook for later BOVW computation
             D = np.ascontiguousarray(D, dtype=np.float32)
             cb = ynumpy.kmeans(D, INTERNAL_PARAMETERS['bovw_codebook_k'], \
-                               distance_type=2, nt=nt, niter=20, seed=0, redo=1, \
+                               distance_type=2, nt=nt, niter=100, seed=0, redo=1, \
                                verbose=True, normalize=False, init='kmeans++')
 
             with open(output_filepath, 'wb') as f:
@@ -447,67 +422,102 @@ def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, inter
 
     for k, part in enumerate(traintest_parts):
         train_inds = np.where(part <= 0)[0]  # train codebook for each possible training parition
-        total = len(train_inds)
-        num_samples_per_vid = int(INTERNAL_PARAMETERS['n_samples'] / float(total))
+        num_samples_per_vid = int(INTERNAL_PARAMETERS['n_samples'] / float(len(train_inds)))
 
         # process the videos
         for i, feat_t in enumerate(feat_types):
+            D = None
+
+            # Train GMMs
             output_filepath = intermediates_path + 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl'
             if isfile(output_filepath):
                 print('%s -> OK' % output_filepath)
-                continue
+            else:
+                start_time = time.time()
 
-            start_time = time.time()
+                D = load_tracklets_sample(tracklets_path, videonames, train_inds, feat_t, num_samples_per_vid)
 
-            D = None  # feat_t's sampled tracklets
-            ptr = 0
-            for j in range(0, total):
-                print j, total
-                idx = train_inds[j]
+                # (special case) trajectory features are originally positions
+                if feat_t == 'trj':
+                    D = convert_positions_to_displacements(D)
 
-                filepath = tracklets_path + feat_t + '/' + videonames[idx] + '.pkl'
-                if not isfile(filepath):
-                    sys.stderr.write('# ERROR: missing training instance'
-                                     ' {}\n'.format(filepath))
-                    sys.stderr.flush()
-                    quit()
+                # scale (rootSIFT)
+                D = rootSIFT(preprocessing.normalize(D, norm='l1', axis=1))
 
-                with open(filepath, 'rb') as f:
-                    d = cPickle.load(f)
+                # compute PCA map and reduce dimensionality
+                if pca_reduction:
+                    pca = PCA(n_components=int(INTERNAL_PARAMETERS['reduction_factor']*D.shape[1]), copy=False)
+                    D = pca.fit_transform(D)
 
-                # init sample
-                if D is None:
-                    D = np.zeros((INTERNAL_PARAMETERS['n_samples'], d.shape[1]), dtype=np.float32)
-                # create a random permutation for sampling some tracklets in this vids
-                randp = np.random.permutation(d.shape[0])
-                if d.shape[0] > num_samples_per_vid:
-                    randp = randp[:num_samples_per_vid]
-                D[ptr:ptr+len(randp),:] = d[randp,:]
-                ptr += len(randp)
-            D = D[:ptr,:]  # cut out extra reserved space
+                # train GMMs for later FV computation
+                D = np.ascontiguousarray(D, dtype=np.float32)
+                gmm = ynumpy.gmm_learn(D, INTERNAL_PARAMETERS['fv_gmm_k'], nt=nt, niter=250, redo=1)
+
+                with open(output_filepath, 'wb') as f:
+                    cPickle.dump(dict(pca=(pca if pca_reduction else None), gmm=gmm), f)
+                with open(intermediates_path + 'gmm-sample' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'wb') as f:
+                    cPickle.dump(D,f)
+
+                elapsed_time = time.time() - start_time
+                print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
+
+            # Dimensionality reduction
+            # gmm_model_filepath = output_filepath
+            # output_filepath = intermediates_path + 'gmm-' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl'
+            # if isfile(output_filepath):
+            #     print('%s -> OK' % output_filepath)
+            # else:
+            #     with open(gmm_model_filepath, 'rb') as f:
+            #         gmm_model = cPickle.load(f)['gmm']
+            #
+            #     if D is None:
+            #         try:
+            #             with open(intermediates_path + 'gmm-sample' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'rb') as f:
+            #                 D = cPickle.load(f)
+            #         except:
+            #             V = [None] * len(train_inds)
+            #             for j,idx in enumerate(train_inds):
+            #                 print("[train_fv_gmms] PCA sample generation: %d out of %d\n" % (j, len(train_inds)))
+            #                 d = None
+            #                 try:
+            #                     with open(tracklets_path + feat_t + '/' + videonames[idx] + '.pkl', 'rb') as f:
+            #                         d = cPickle.load(f)
+            #                 except IOError:
+            #                     continue
+            #                 V[j] = ynumpy.fisher(gmm_model, np.ascontiguousarray(d, dtype=np.float32), include=INTERNAL_PARAMETERS['fv_repr_feats'])
+            #
+            #             with open(intermediates_path + 'gmm-sample' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl', 'wb') as f:
+            #                 cPickle.dump(V,f)
 
 
-            # (special case) trajectory features are originally positions
-            if feat_t == 'trj':
-                D = convert_positions_to_displacements(D)
+def load_tracklets_sample(tracklets_path, videonames, data_inds, feat_t, num_samples_per_vid):
+    D = None  # feat_t's sampled tracklets
+    ptr = 0
+    for j in range(0, len(data_inds)):
+        idx = data_inds[j]
 
-            # scale (rootSIFT)
-            D = rootSIFT(preprocessing.normalize(D, norm='l1', axis=1))
+        filepath = tracklets_path + feat_t + '/' + videonames[idx] + '.pkl'
+        if not isfile(filepath):
+            sys.stderr.write('# ERROR: missing training instance'
+                             ' {}\n'.format(filepath))
+            sys.stderr.flush()
+            quit()
 
-            # compute PCA map and reduce dimensionality
-            if pca_reduction:
-                pca = PCA(n_components=int(INTERNAL_PARAMETERS['reduction_factor']*D.shape[1]), copy=False)
-                D = pca.fit_transform(D)
+        with open(filepath, 'rb') as f:
+            d = cPickle.load(f)
 
-            # train GMMs for later FV computation
-            D = np.ascontiguousarray(D, dtype=np.float32)
-            gmm = ynumpy.gmm_learn(D, INTERNAL_PARAMETERS['fv_gmm_k'], nt=nt, niter=500, redo=1)
+        # init sample
+        if D is None:
+            D = np.zeros((INTERNAL_PARAMETERS['n_samples'], d.shape[1]), dtype=np.float32)
+        # create a random permutation for sampling some tracklets in this vids
+        randp = np.random.permutation(d.shape[0])
+        if d.shape[0] > num_samples_per_vid:
+            randp = randp[:num_samples_per_vid]
+        D[ptr:ptr+len(randp),:] = d[randp,:]
+        ptr += len(randp)
 
-            with open(output_filepath, 'wb') as f:
-                cPickle.dump(dict(pca=(pca if pca_reduction else None), gmm=gmm), f)
+    return D[:ptr,:] # cut out extra reserved space
 
-            elapsed_time = time.time() - start_time
-            print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
 
 
 # ==============================================================================
@@ -582,7 +592,7 @@ def reconstruct_tree_from_leafs(leafs):
 
     return h
 
-def bovw(codebook, X):
+def bovw(codebook, X, nt=1):
     inds, dists = ynumpy.knn(X, codebook, nnn=1, distance_type=2, nt=1)
     bins, _ = np.histogram(inds[:,0], bins=INTERNAL_PARAMETERS['bovw_codebook_k'])
 

@@ -37,10 +37,10 @@ def cluster_multithread(tracklets_path, videonames, clusters_path, nt=4):
     # inds = np.random.permutation(len(videonames))
     inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
     # step = np.int(np.floor(len(inds)/nt)+1)
-    Parallel(n_jobs=nt, backend='multiprocessing')(delayed(_cluster)(tracklets_path, videonames, \
+    Parallel(n_jobs=nt, backend='threading')(delayed(_cluster)(tracklets_path, videonames, \
                                                                [i], \
                                                                clusters_path, visualize=False)
-                                             for i in inds)
+                                                     for i in inds)
 
 
 def _cluster(tracklets_path, videonames, indices, clusters_path, visualize=False):

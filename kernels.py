@@ -397,16 +397,17 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
 
     shuffle(points)  # so all threads have similar workload
 
-    # DEBUG
-    # ---
-    # step = len(points)
-    # ret = _intersection_kernel(X, Y, points, n_channels=n_channels, tid=-1, verbose=True)
-    # ---
     step = np.int(np.floor(len(points)/nt)+1)
-    # ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))],
-    #                                                                              n_channels=n_channels, tid=i, verbose=True)
+    # ---
+    # ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel_batch)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))],
+    #                                                                              n_channels=n_channels, job_id=i, verbose=True)
     #                                                for i in xrange(nt))
-
+    # # aggregate results of parallel computations
+    # Kr, Ke = ret[0][0], ret[0][1]
+    # for r in ret[1:]:
+    #     Kr += r[0]
+    #     Ke += r[1]
+    # ---
     ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel)(X['root'][i], Y['root'][j], X['nodes'][i], Y['nodes'][j],
                                                                              n_channels=n_channels, job_id=job_id, verbose=True)
                                                for job_id,(i,j) in enumerate(points))
@@ -418,6 +419,7 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
         i,j = points[job_id]
         for c in xrange(n_channels):
             Kr[c,i,j], Ke[c,i,j] = res[c,0], res[c,1]
+    # ---
 
     # if symmetric, replicate upper to lower triangle matrix
     if is_symmetric:
@@ -468,7 +470,7 @@ def _intersection_kernel(input_path, videonames, X, Y, points, tid=None, verbose
 
     return Kr, Kn
 
-def _intersection_kernel(X, Y, points, n_channels=1, tid=None, verbose=True):
+def _intersection_kernel_batch(X, Y, points, n_channels=1, job_id=None, verbose=True):
     """
     Compute the ATEP kernel.
     :param X:
@@ -490,7 +492,7 @@ def _intersection_kernel(X, Y, points, n_channels=1, tid=None, verbose=True):
 
     for pid,(i,j) in enumerate(points):
         if verbose:
-            print('[Parallel intersection kernel] Thread %d, progress = %.1f%%]' % (tid,100.*(pid+1)/len(points)))
+            print('[Parallel intersection kernel] Thread %d, progress = %.1f%%]' % (job_id,100.*(pid+1)/len(points)))
 
         for k in xrange(n_channels):
             Kr[k,i,j] = np.minimum(X['root'][i][k], Y['root'][j][k]).sum()  # * p

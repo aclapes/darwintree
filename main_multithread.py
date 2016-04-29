@@ -21,6 +21,7 @@ from scipy.io import loadmat
 import tracklet_extraction, tracklet_clustering, tracklet_representation, kernels, classification
 
 import xmltodict
+import argparse
 
 
 # ==============================================================================
@@ -42,15 +43,16 @@ def load_XML_config(filepath):
     for path in xml['configuration']['path']:
         config_dict[path['@key']] = path['#text'].encode('utf-8')
 
-    if not isinstance(xml['configuration']['option'], list):
-        option = xml['configuration']['option']
-        config_dict[option['@key']] = option['#text'].encode('utf-8')
-    else:
-        for option in xml['configuration']['option']:
+    if 'option' in xml['configuration']:
+        if not isinstance(xml['configuration']['option'], list):
+            option = xml['configuration']['option']
             config_dict[option['@key']] = option['#text'].encode('utf-8')
-
-    if 'num_threads' in config_dict:
-        config_dict['num_threads'] = int(config_dict['num_threads'])
+        else:
+            for option in xml['configuration']['option']:
+                config_dict[option['@key']] = option['#text'].encode('utf-8')
+        # data type conversions from str to target type
+        if 'num_threads' in config_dict:  # num threads has to be an integer
+            config_dict['num_threads'] = int(config_dict['num_threads'])
 
     features_list = xml['configuration']['features_list']
 
@@ -171,8 +173,7 @@ def get_highfive_config(parent_path):
     for partition_name in train_test:
         n = len(videonames)
         for i, name in enumerate(action_names):
-            videonames += [name + '_' + str(j).zfill(4)
-                           for j in train_test[partition_name][name]]
+            videonames += [name + '_' + str(j).zfill(4) for j in train_test[partition_name][name]]
             int_inds += [i]*len(train_test[partition_name][name])
 
         train_test_inds.append(np.linspace(n, len(videonames)-1, len(videonames)-n).astype('int32'))
@@ -192,7 +193,7 @@ def get_highfive_config(parent_path):
 
     class_labels = class_labels[:,np.where(np.array(action_names) != 'negative')[0]]
 
-    return fullvideonames, videonames, class_labels, action_names, traintest_parts
+    return fullvideonames, videonames, class_labels, action_names, [traintest_parts[0]]
 
 
 def get_ucfsportsaction_dataset(parent_path):
@@ -331,214 +332,320 @@ def uniform_weights_dist(n_weights, step=0.1):
 # Main
 # ==============================================================================
 
-feat_weights = [[1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1], \
-                [0.5,0.5,0,0], [0.5,0,0.5,0], [0.5,0,0,0.5], [0,0.5,0.5,0], [0,0.5,0,0.5], [0,0,0.5,0.5], \
-                [0,0.333,0.333,0.333], [0.333,0,0.333,0.333], [0.333,0.333,0,0.333], [0.333,0.333,0.333,0], \
-                [0.25,0.25,0.25,0.25]]
-# feat_weights = [[0.25,0.25,0.25,0.25]]
-C_gbl = [1]  #[0.01, 0.05, 0.1] + np.linspace(0.5,10,20).tolist() + [20, 50, 100]
+desc_weights_gbl = [[1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1], \
+                    [0.5,0.5,0,0], [0.5,0,0.5,0], [0.5,0,0,0.5], [0,0.5,0.5,0], [0,0.5,0,0.5], [0,0,0.5,0.5], \
+                    [0,0.333,0.333,0.333], [0.333,0,0.333,0.333], [0.333,0.333,0,0.333], [0.333,0.333,0.333,0], \
+                    [0.25,0.25,0.25,0.25]]
+C_gbl = [0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 25, 50, 100]
+
+# DEBUG
+# ---
+# C_gbl = [1]
+desc_weights_gbl = [[1]] #[[0.25,0.25,0.25,0.25]]
+# ---
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Process the videos to see whether they contain speaking-while-facing-a-camera scenes.')
+    parser.add_argument('--num-threads', help='number of threads for parallelization.')
+    args = parser.parse_args()
+
     # prepare configuration-related variables
     xml_config = load_XML_config('config.xml')  # get it from XML file
     tracklets_path, clusters_path, intermediates_path, feats_path, kernels_path = get_global_config(xml_config)  # build output dirs
     fullvideonames, videonames, class_labels, action_names, traintest_parts = get_dataset_info(xml_config)  # build dataset-related variable
 
+    nt = 1  # average computer CPU number of workers
+    if args.num_threads:
+        nt = int(args.num_threads)
+
     # Extract improved dense trajectories
-    tracklet_extraction.extract_multithread(fullvideonames, videonames, xml_config['features_list'], tracklets_path, nt=xml_config['num_threads'])
-    tracklet_clustering.cluster_multithread(tracklets_path, videonames, clusters_path, nt=xml_config['num_threads'])
+    tracklet_extraction.extract_multithread(fullvideonames, videonames, xml_config['features_list'], tracklets_path, nt=nt)
+    tracklet_clustering.cluster_multithread(tracklets_path, videonames, clusters_path, nt=nt)
 
 
     if 'atep_bovwtree' in xml_config['methods_list']:
-        tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=xml_config['num_threads'])
+        tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=nt)
         tracklet_representation.compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                      feats_path + 'bovwtree/', \
-                                                                     treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=xml_config['num_threads'])
+                                                                     treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
         atep_bovw = kernels.compute_ATEP_kernels(feats_path + 'bovwtree/', videonames, traintest_parts, xml_config['features_list'], \
-                                    kernels_path + 'atep-bovwtree/', use_disk=False, nt=xml_config['num_threads'])
+                                    kernels_path + 'atep-bovwtree/', use_disk=False, nt=nt)
 
-        combs = [c for c in itertools.product(*[[[1]],[0.5],np.linspace(0,1,11), [[1]]])]
+        combs = [c for c in itertools.product(*[[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
         results = classification.classify(atep_bovw, \
                                           class_labels, traintest_parts, combs, \
                                           xml_config['features_list'], \
-                                          C=[1e-3, 1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5],
-                                          strategy='kernel_fusion')
+                                          C=C_gbl,
+                                          strategy='kernel_fusion',
+                                          opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
     if 'atep_bovwtree-pca' in xml_config['methods_list']:
-        tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, nt=xml_config['num_threads'])
+        tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=True, nt=nt)
         tracklet_representation.compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                      feats_path + 'bovwtree-pca/', \
-                                                                     treelike=True, clusters_path=clusters_path, nt=xml_config['num_threads'])
-        atep_bovw = kernels.compute_ATEP_kernels(feats_path + 'bovwtree-pca/', videonames, traintest_parts, xml_config['features_list'], \
-                                    kernels_path + 'atep-bovwtree-pca/', use_disk=False, nt=xml_config['num_threads'])
+                                                                     treelike=True, pca_reduction=True, clusters_path=clusters_path, nt=nt)
 
-        combs = [c for c in itertools.product(*[[[1]],[0.5],np.linspace(0,1,11),[[1]]])]
+        atep_bovw = kernels.compute_ATEP_kernels(feats_path + 'bovwtree-pca/', videonames, traintest_parts, xml_config['features_list'], \
+                                    kernels_path + 'atep-bovwtree-pca/', use_disk=False, nt=nt)
+
+        combs = [c for c in itertools.product(*[[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
         results = classification.classify(atep_bovw, \
                                           class_labels, traintest_parts, combs, \
                                           xml_config['features_list'], \
-                                          C=[1e-3, 1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5],
-                                          strategy='kernel_fusion')
+                                          C=C_gbl,
+                                          strategy='kernel_fusion',
+                                          opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
     if 'atep_fvtree' in xml_config['methods_list']:
-        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, nt=xml_config['num_threads'])
+        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=nt)
         tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                    feats_path + 'fvtree/', \
-                                                                   treelike=True, clusters_path=clusters_path, nt=xml_config['num_threads'])
+                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
 
         atep_fv = kernels.compute_ATEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
-                                            kernels_path + 'atep-fvtree/', use_disk=False, nt=xml_config['num_threads'])
+                                            kernels_path + 'atep-fvtree/', use_disk=False, nt=nt)
 
 
-        combs = [c for c in itertools.product(*[[[1]],[0.5],np.linspace(0,1,11), [[.25,.25,.25,.25]] ])]
+        combs = [c for c in itertools.product(*[[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
         results = classification.classify(atep_fv, \
                                           class_labels, traintest_parts, combs, \
                                           xml_config['features_list'], \
-                                          C=[1e-3, 1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5],
-                                          strategy='kernel_fusion')
+                                          C=C_gbl,
+                                          strategy='kernel_fusion',
+                                          opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
     if 'atep_fvtree-pca' in xml_config['methods_list']:
-        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=True, nt=xml_config['num_threads'])
+        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=True, nt=nt)
         tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                    feats_path + 'fvtree-pca/', \
-                                                                   treelike=True, pca_reduction=True, clusters_path=clusters_path, nt=xml_config['num_threads'])
+                                                                   treelike=True, pca_reduction=True, clusters_path=clusters_path, nt=nt)
 
         atep_fv = kernels.compute_ATEP_kernels(feats_path + 'fvtree-pca/', videonames, traintest_parts, xml_config['features_list'], \
-                                            kernels_path + 'atep-fvtree-pca/', use_disk=False, nt=xml_config['num_threads'])
+                                            kernels_path + 'atep-fvtree-pca/', use_disk=False, nt=nt)
 
-        combs = [c for c in itertools.product(*[[[1]],[0.5],np.linspace(0,1,11),[[1]]])]
+        combs = [c for c in itertools.product(*[[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
         results = classification.classify(atep_fv, \
                                           class_labels, traintest_parts, combs, \
                                           xml_config['features_list'], \
-                                          C=[1e-3, 1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5],
-                                          strategy='kernel_fusion')
-        classification.print_results(results)
-
-    # WORKING HERE NOW
-    if 'atnbep_vd-fv' in xml_config['methods_list']:
-        # tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=xml_config['num_threads'])
-        tracklet_representation.compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
-                                                                     feats_path + 'bovwtree/', \
-                                                                     treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=xml_config['num_threads'])
-        # tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, nt=xml_config['num_threads'])
-        # tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
-        #                                                            feats_path + 'fvtree/', \
-        #                                                            treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=xml_config['num_threads'])
-        # tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
-        #                                                             feats_path + 'vdtree/', \
-        #                                                             treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=xml_config['num_threads'])
-
-        print "Kernel computation(s) .."
-
-        # Kernel computation functions
-        # Return the kernel in a cumbersome structure, that is:
-        #       [0,...,#folds-1] x {'train','test'} x {'trj',..,'mbh'} x {'root','nodes'}
-        # A list of dictionaries of size #folds. Each contains two elements, with key 'train'and 'test'.
-        # Train/test entries refer to another dictionary each, which are indexed by modalities' names ('mbh'for instance).
-        # A modality dict contains 'nodes' and 'root', which are eventually the kernel matrices. These matrices correspond
-        # to similarity of actions based on darwintrees' roots and nodes respectively.
-        st_time = time.time()
-
-        atep_bovw = kernels.compute_ATEP_kernels(feats_path + 'bovwtree/', videonames, traintest_parts, xml_config['features_list'], \
-                                    kernels_path + 'atep-bovw/', use_disk=False, nt=xml_config['num_threads'])
-        # atnbep_bovw = kernels.compute_ATNBEP_kernels(feats_path + 'bovwtree/', videonames, traintest_parts, xml_config['features_list'], \
-        #                                         kernels_path + 'atnbep-bovw/', use_disk=False, nt=xml_config['num_threads'])
-        #
-        atep_fv = kernels.compute_ATEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
-                                            kernels_path + 'atep-fv/', use_disk=False, nt=xml_config['num_threads'])
-
-        # atep_vd = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, traintest_parts, xml_config['features_list'], \
-        #                                     kernels_path + 'atep-vd/', use_disk=False, nt=xml_config['num_threads'])
-        #
-        # atnbep_fv = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
-        #                                         kernels_path + 'atnbep-fvtree/', use_disk=False, nt=xml_config['num_threads'])
-
-
-        # w = [[1,0], [0,1], [0.5,0.5]]
-        combs = [c for c in itertools.product(*[[[1]],[0.5],np.linspace(0,1,11),[[.25,.25,.25,.25]]])]
-        results = classification.classify(atep_fv, \
-                                          class_labels, traintest_parts, combs, \
-                                          xml_config['features_list'], \
-                                          C=[1e-3, 1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5],
-                                          strategy='kernel_fusion')
-
-        # merged = [utils.merge_dictionaries([atep_fv[i], atep_vd[i]]) for i in xrange(len(atep_vd))]
-        # merged = [utils.merge_dictionaries([merged[i], atnbep_fv[i]]) for i in xrange(len(merged))]
-
-        # w = [[0.5,0,0.5], [0,1,0], [0,0,1], [0.5,0.5,0], [0.5,0,0.5], [0,0.5,0.5], [1./3,1./3,1./3]]
-        # combs = [c for c in itertools.product(*[[[1]],[0.5],np.linspace(0,1,11),[[1]]])]
-        # results = classification.classify([utils.merge_dictionaries([atep_bovw[i], atnbep_bovw[i]]) for i in xrange(len(atep_bovw))], \
-        #                                   class_labels, traintest_parts, combs, \
-        #                                   xml_config['features_list'], \
-        #                                   C=[1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5, 1e6],
-        #                                   strategy='kernel_fusion')
-
-        # a = [1,0.5]
-        # C = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 5e-1, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5]
-        # results = classification.classify(merged, \
-        #                                   class_labels, traintest_parts, a, \
-        #                                   xml_config['features_list'], \
-        #                                   C=C,
-        #                                   strategy='learning_based_fusion')
+                                          C=C_gbl,
+                                          strategy='kernel_fusion',
+                                          opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
     # # Darwin-tree descriptor computation and classification
     if 'atep_vdtree' in xml_config['methods_list']:
-        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=xml_config['num_threads'])
+        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=nt)
         tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                    feats_path + 'vdtree/', \
-                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=xml_config['num_threads'])
+                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
 
         atep_vd = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, traintest_parts, xml_config['features_list'], \
-                                               kernels_path + 'atep-vdtree/', use_disk=False, nt=xml_config['num_threads'])
+                                               kernels_path + 'atep-vdtree/', use_disk=False, nt=nt)
 
-        combs = [c for c in itertools.product(*[[[1]],[0.5],np.linspace(0,1,11),[[1]]])]
+        combs = [c for c in itertools.product(*[[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
         results = classification.classify(atep_vd, \
                                           class_labels, traintest_parts, combs, \
                                           xml_config['features_list'], \
-                                          C=[1e-3, 1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5],
-                                          strategy='kernel_fusion')
+                                          C=[1],
+                                          strategy='kernel_fusion',
+                                          opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
     if 'atnbep' in xml_config['methods_list']:
-        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, \
-                                              pca_reduction=False, nt=xml_config['num_threads'])
+        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=nt)
         tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                    feats_path + 'fvtree/', \
-                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=xml_config['num_threads'])
-        atnbep_fv = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
-                                                   kernels_path + 'atnbep-fvtree/', use_disk=False, nt=xml_config['num_threads'])
+                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
 
-        combs = [c for c in itertools.product(*[[[1]],[0.5],[0],[[1]]])]
+        atnbep_fv = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
+                                                   kernels_path + 'atnbep-fvtree/', use_disk=False, nt=nt)
+
+        combs = [c for c in itertools.product(*[[[1]], [1], [0], desc_weights_gbl])]
         results = classification.classify(atnbep_fv, \
                                           class_labels, traintest_parts, combs, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion')
+                                          strategy='kernel_fusion',
+                                          opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
-    if 'atep_fvtree+atnbep_fvtree' in xml_config['methods_list']:
-        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, nt=xml_config['num_threads'])
+    if 'atep_fvtree+atep_vdtree' in xml_config['methods_list']:
+        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=nt)
         tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
                                                                    feats_path + 'fvtree/', \
-                                                                   treelike=True, clusters_path=clusters_path, nt=xml_config['num_threads'])
+                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
+        tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+                                                                   feats_path + 'vdtree/', \
+                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
 
         atep_fv = kernels.compute_ATEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
-                                            kernels_path + 'atep-fvtree/', use_disk=False, nt=xml_config['num_threads'])
-        atnbep_fv = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
-                                               kernels_path + 'atnbep-fvtree/', use_disk=False, nt=xml_config['num_threads'])
+                                            kernels_path + 'atep-fvtree/', use_disk=False, nt=nt)
+        atep_vd = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, traintest_parts, xml_config['features_list'], \
+                                               kernels_path + 'atep-vdtree/', use_disk=False, nt=nt)
 
-        merged = [utils.merge_dictionaries([atep_fv[i], atnbep_fv[i]]) for i in xrange(len(atep_fv))]
+        merged = [utils.merge_dictionaries([atep_fv[i], atep_vd[i]]) for i in xrange(len(atep_fv))]
 
-        combs = [c for c in itertools.product(*[[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), feat_weights])]
+        combs = [c for c in itertools.product(*[[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
         results = classification.classify(merged, \
                                           class_labels, traintest_parts, combs, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion')
+                                          strategy='kernel_fusion',
+                                          opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
+
+    if 'atep_fvtree+atnbep' in xml_config['methods_list']:
+        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=nt)
+        tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+                                                                   feats_path + 'fvtree/', \
+                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
+
+        atep_fv = kernels.compute_ATEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
+                                            kernels_path + 'atep-fvtree/', use_disk=False, nt=nt)
+        atnbep_fv = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
+                                               kernels_path + 'atnbep-fvtree/', use_disk=False, nt=nt)
+
+        merged = [utils.merge_dictionaries([atep_fv[i], atnbep_fv[i]]) for i in xrange(len(atep_fv))]
+
+        combs = [c for c in itertools.product(*[[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        results = classification.classify(merged, \
+                                          class_labels, traintest_parts, combs, \
+                                          xml_config['features_list'], \
+                                          C=C_gbl,
+                                          strategy='kernel_fusion',
+                                          opt_criterion=xml_config['opt_criterion'])
+        classification.print_results(results)
+
+
+    if 'atep_vdtree+atnbep' in xml_config['methods_list']:
+        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=nt)
+        tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+                                                                   feats_path + 'vdtree/', \
+                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
+        tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+                                                                   feats_path + 'fvtree/', \
+                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
+
+        atep_vd = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, traintest_parts, xml_config['features_list'], \
+                                               kernels_path + 'atep-vdtree/', use_disk=False, nt=nt)
+        atnbep_fv = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
+                                               kernels_path + 'atnbep-fvtree/', use_disk=False, nt=nt)
+
+        merged = [utils.merge_dictionaries([atep_vd[i], atnbep_fv[i]]) for i in xrange(len(atep_vd))]
+
+        combs = [c for c in itertools.product(*[[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        results = classification.classify(merged, \
+                                          class_labels, traintest_parts, combs, \
+                                          xml_config['features_list'], \
+                                          C=C_gbl,
+                                          strategy='kernel_fusion',
+                                          opt_criterion=xml_config['opt_criterion'])
+        classification.print_results(results)
+
+
+    if 'atep_fvtree+atep_vdtree+atnbep' in xml_config['methods_list']:
+        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=nt)
+        tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+                                                                   feats_path + 'fvtree/', \
+                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
+        tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+                                                                   feats_path + 'vdtree/', \
+                                                                   treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
+
+        atep_fv = kernels.compute_ATEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
+                                            kernels_path + 'atep-fvtree/', use_disk=False, nt=nt)
+        atep_vd = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, traintest_parts, xml_config['features_list'], \
+                                               kernels_path + 'atep-vdtree/', use_disk=False, nt=nt)
+        atnbep_fv = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
+                                               kernels_path + 'atnbep-fvtree/', use_disk=False, nt=nt)
+
+        merged = [utils.merge_dictionaries([atep_fv[i], atep_vd[i]]) for i in xrange(len(atep_fv))]
+        merged = [utils.merge_dictionaries([merged[i], atnbep_fv[i]]) for i in xrange(len(merged))]
+
+        w = [[1,0,0],[0,1,0],[0,0,1],[.5,.5,0],[0,.5,.5],[.5,0,.5],[.333,.333,.333]]
+        combs = [c for c in itertools.product(*[w, [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        results = classification.classify(merged, \
+                                          class_labels, traintest_parts, combs, \
+                                          xml_config['features_list'], \
+                                          C=C_gbl,
+                                          strategy='kernel_fusion',
+                                          opt_criterion=xml_config['opt_criterion'])
+        classification.print_results(results)
+
+    # WORKING HERE NOW
+    # if 'atnbep_vd-fv' in xml_config['methods_list']:
+    #     # tracklet_representation.train_bovw_codebooks(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=False, nt=nt)
+    #     tracklet_representation.compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+    #                                                                  feats_path + 'bovwtree/', \
+    #                                                                  treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
+    #     # tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, nt=nt)
+    #     # tracklet_representation.compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+    #     #                                                            feats_path + 'fvtree/', \
+    #     #                                                            treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
+    #     # tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+    #     #                                                             feats_path + 'vdtree/', \
+    #     #                                                             treelike=True, pca_reduction=False, clusters_path=clusters_path, nt=nt)
+    #
+    #     print "Kernel computation(s) .."
+    #
+    #     # Kernel computation functions
+    #     # Return the kernel in a cumbersome structure, that is:
+    #     #       [0,...,#folds-1] x {'train','test'} x {'trj',..,'mbh'} x {'root','nodes'}
+    #     # A list of dictionaries of size #folds. Each contains two elements, with key 'train'and 'test'.
+    #     # Train/test entries refer to another dictionary each, which are indexed by modalities' names ('mbh'for instance).
+    #     # A modality dict contains 'nodes' and 'root', which are eventually the kernel matrices. These matrices correspond
+    #     # to similarity of actions based on darwintrees' roots and nodes respectively.
+    #     st_time = time.time()
+    #
+    #     atep_bovw = kernels.compute_ATEP_kernels(feats_path + 'bovwtree/', videonames, traintest_parts, xml_config['features_list'], \
+    #                                 kernels_path + 'atep-bovw/', use_disk=False, nt=nt)
+    #     # atnbep_bovw = kernels.compute_ATNBEP_kernels(feats_path + 'bovwtree/', videonames, traintest_parts, xml_config['features_list'], \
+    #     #                                         kernels_path + 'atnbep-bovw/', use_disk=False, nt=nt)
+    #     #
+    #     atep_fv = kernels.compute_ATEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
+    #                                         kernels_path + 'atep-fv/', use_disk=False, nt=nt)
+    #
+    #     # atep_vd = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, traintest_parts, xml_config['features_list'], \
+    #     #                                     kernels_path + 'atep-vd/', use_disk=False, nt=nt)
+    #     #
+    #     # atnbep_fv = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
+    #     #                                         kernels_path + 'atnbep-fvtree/', use_disk=False, nt=nt)
+    #
+    #
+    #     # w = [[1,0], [0,1], [0.5,0.5]]
+    #     combs = [c for c in itertools.product(*[[[1]],[0.5],np.linspace(0,1,11),[[.25,.25,.25,.25]]])]
+    #     results = classification.classify(atep_fv, \
+    #                                       class_labels, traintest_parts, combs, \
+    #                                       xml_config['features_list'], \
+    #                                       C=[1e-3, 1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5],
+    #                                       strategy='kernel_fusion',
+    #                                       opt_criterion=xml_config['opt_criterion'])
+    #
+    #     # merged = [utils.merge_dictionaries([atep_fv[i], atep_vd[i]]) for i in xrange(len(atep_vd))]
+    #     # merged = [utils.merge_dictionaries([merged[i], atnbep_fv[i]]) for i in xrange(len(merged))]
+    #
+    #     # w = [[0.5,0,0.5], [0,1,0], [0,0,1], [0.5,0.5,0], [0.5,0,0.5], [0,0.5,0.5], [1./3,1./3,1./3]]
+    #     # combs = [c for c in itertools.product(*[[[1]],[0.5],np.linspace(0,1,11),desc_weights_gbl])]
+    #     # results = classification.classify([utils.merge_dictionaries([atep_bovw[i], atnbep_bovw[i]]) for i in xrange(len(atep_bovw))], \
+    #     #                                   class_labels, traintest_parts, combs, \
+    #     #                                   xml_config['features_list'], \
+    #     #                                   C=[1e-2, 5e-2, 1e-1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5, 1e6],
+    #     #                                   strategy='kernel_fusion',
+    #     #                                   opt_criterion=xml_config['opt_criterion'])
+    #
+    #     # a = [1,0.5]
+    #     # C = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 5e-1, 1, 5, 10, 50, 100, 500, 1000, 1e4, 1e5]
+    #     # results = classification.classify(merged, \
+    #     #                                   class_labels, traintest_parts, a, \
+    #     #                                   xml_config['features_list'], \
+    #     #                                   C=C,
+    #     #                                   strategy='learning_based_fusion',
+    #     #                                   opt_criterion=xml_config['opt_criterion'])
+    #
+    #     classification.print_results(results)
 
 
     quit()  # TODO: remove this for further processing
