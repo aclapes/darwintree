@@ -165,8 +165,8 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
         total = len(videonames)
 
         for feat_t in feat_types:
-            train_filepath = join(kernels_output_path, 'train-' + feat_t + '-' + str(k) + '.pkl')
-            test_filepath = join(kernels_output_path, 'test-' + feat_t + '-' + str(k) + '.pkl')
+            train_filepath = join(kernels_output_path, 'linear-train-' + feat_t + '-' + str(k) + '.pkl')
+            test_filepath = join(kernels_output_path, 'linear-test-' + feat_t + '-' + str(k) + '.pkl')
             if isfile(train_filepath) and isfile(test_filepath):
                 with open(train_filepath, 'rb') as f:
                     data = cPickle.load(f)
@@ -188,7 +188,7 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                         Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
                 except IOError:
                     if use_disk:
-                        Kr_train, Kn_train = intersection_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
+                        Kr_train, Kn_train = linear_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
                     else:
                         D_train = dict()
                         for i,idx in enumerate(train_inds):
@@ -205,7 +205,7 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
 
                         st_kernel = time.time()
                         print("[Kernel computation] Compute kernel matrix %s .." % (feat_t))
-                        Kr_train, Kn_train = intersection_kernel(D_train, nt=nt)
+                        Kr_train, Kn_train = linear_kernel(D_train, nt=nt)
                         print("[Kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(train_filepath, 'wb') as f:
@@ -217,7 +217,7 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                         Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
                 except IOError:
                     if use_disk:
-                        Kr_test, Kn_test = intersection_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                        Kr_test, Kn_test = linear_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
                     else:
                         if not 'D_train' in locals():
                             D_train = dict()
@@ -246,7 +246,7 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
 
                         st_kernel = time.time()
                         print("[Kernel computation] Compute kernel matrix %s .." % (feat_t))
-                        Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, nt=nt)
+                        Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, nt=nt)
                         print("[Kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(test_filepath, 'wb') as f:

@@ -414,7 +414,7 @@ if __name__ == "__main__":
                                             kernels_path + 'atep-fvtree/', use_disk=False, nt=nt)
 
 
-        params = [[[1]], [1], np.linspace(0,1,21), desc_weights_gbl]
+        params = [[[1]], [0.5], np.linspace(0,1,21), desc_weights_gbl]
         results = classification.classify(atep_fv, \
                                           class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
@@ -451,7 +451,7 @@ if __name__ == "__main__":
         atep_vd = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, traintest_parts, xml_config['features_list'], \
                                                kernels_path + 'atep-vdtree/', use_disk=False, nt=nt)
 
-        params = [[[1]], [1,0.5], np.linspace(0,1,21), desc_weights_gbl]
+        params = [[[1]], [0.5], np.linspace(0,1,21), desc_weights_gbl]
         results = classification.classify(atep_vd, \
                                           class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \

@@ -224,7 +224,7 @@ def classify(input_kernels, class_labels, traintest_parts, params, feat_types, s
 
 
 def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_types, class_labels, train_test_idx, \
-                                 C=[1], square_kernels=False, opt_criterion='acc'):
+                                 C=[1], square_kernels=True, opt_criterion='acc'):
     '''
 
     :param kernels_tr:
@@ -246,7 +246,7 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
     # lb = LabelBinarizer(neg_label=-1, pos_label=1)
 
     class_ints = np.dot(class_labels, np.logspace(0, class_labels.shape[1]-1, class_labels.shape[1]))
-    skf = cross_validation.StratifiedKFold(class_ints[tr_inds], n_folds=10, shuffle=False, random_state=74)
+    skf = cross_validation.StratifiedKFold(class_ints[tr_inds], n_folds=2, shuffle=False, random_state=74)
 
     Rval = np.zeros((class_labels.shape[1], len(a), len(C)), dtype=np.float32)
     for k in xrange(class_labels.shape[1]):
@@ -288,8 +288,8 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
                     # test instances not indexed directly, but a mask is created excluding negative instances
                     val_te_msk = np.ones(tr_inds.shape, dtype=np.bool)
                     val_te_msk[val_tr_inds] = False
-                    # negatives_msk = np.negative(np.any(class_labels[tr_inds] > 0, axis=1))
-                    # val_te_msk[negatives_msk] = False
+                    negatives_msk = np.negative(np.any(class_labels[tr_inds] > 0, axis=1))
+                    val_te_msk[negatives_msk] = False
 
                     acc_tmp, ap_tmp, _ = _train_and_classify_binary(
                         K_tr[val_tr_inds,:][:,val_tr_inds], K_tr[val_te_msk,:][:,val_tr_inds], \
