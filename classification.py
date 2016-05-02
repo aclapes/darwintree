@@ -1,12 +1,14 @@
 __author__ = 'aclapes'
 
 import numpy as np
+import sys
 from sklearn import svm
 from sklearn.metrics import average_precision_score, label_ranking_average_precision_score, make_scorer
 import utils
 from copy import deepcopy
 from sklearn import preprocessing, cross_validation, grid_search
 from sklearn.ensemble import RandomForestClassifier
+import itertools
 
 # import matplotlib.pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D
@@ -20,7 +22,7 @@ svm_parameters = {'C': [1e-4,1e-3,1e-2,1e-1,1,10,100,1e3,1e4], \
                   'kernel':['rbf'], 'class_weight':['balanced']}
 
 rbf_parameters = {'n_estimators': [10,20,30,40],
-              'max_features': ['auto','sqrt','log2',0.5,0.3],
+                  'max_features': ['auto','sqrt','log2',0.5,0.3],
                   'class_weight':['balanced']}
 
 # def merge(input_kernels):
@@ -30,7 +32,7 @@ rbf_parameters = {'n_estimators': [10,20,30,40],
 #         kernels_train[i]['train']
 
 
-def classify(input_kernels, class_labels, traintest_parts, a, feat_types, strategy='kernel_fusion', C=[1], opt_criterion='acc'):
+def classify(input_kernels, class_labels, traintest_parts, params, feat_types, strategy='kernel_fusion', C=[1], opt_criterion='acc'):
     '''
     TODO Fill this.
     :param feats_path:
@@ -42,6 +44,8 @@ def classify(input_kernels, class_labels, traintest_parts, a, feat_types, strate
     :return:
     '''
 
+    combs = [c for c in itertools.product(*params)]
+
     results = [None] * len(traintest_parts)
     for k, part in enumerate(traintest_parts):
         train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
@@ -49,14 +53,17 @@ def classify(input_kernels, class_labels, traintest_parts, a, feat_types, strate
         kernels_train = input_kernels[k]['train']
         kernels_test  = input_kernels[k]['test']
         if strategy == 'kernel_fusion':
-            results[k] = kernel_fusion_classification(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), \
+            results[k] = kernel_fusion_classification(kernels_train, kernels_test, combs, feat_types, class_labels, (train_inds, test_inds), \
                                                       C=C, opt_criterion=opt_criterion)
         elif strategy == 'simple_voting':
-            results[k] = simple_voting_classification(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), \
+            results[k] = simple_voting_classification(kernels_train, kernels_test, params[1], feat_types, class_labels, (train_inds, test_inds), \
                                                       C=C, opt_criterion=opt_criterion)
         elif strategy == 'learning_based_fusion':
-            results[k] = learning_based_fusion_classification(kernels_train, kernels_test, a, feat_types, class_labels, (train_inds, test_inds), \
+            results[k] = learning_based_fusion_classification(kernels_train, kernels_test, params[1], feat_types, class_labels, (train_inds, test_inds), \
                                                               C=C, opt_criterion=opt_criterion)
+        else:
+            sys.stderr.write('Not a valid classification method.')
+            sys.stderr.flush()
 
     return results
 
@@ -239,7 +246,7 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
     # lb = LabelBinarizer(neg_label=-1, pos_label=1)
 
     class_ints = np.dot(class_labels, np.logspace(0, class_labels.shape[1]-1, class_labels.shape[1]))
-    skf = cross_validation.StratifiedKFold(class_ints[tr_inds], n_folds=4, shuffle=False, random_state=74)
+    skf = cross_validation.StratifiedKFold(class_ints[tr_inds], n_folds=10, shuffle=False, random_state=74)
 
     Rval = np.zeros((class_labels.shape[1], len(a), len(C)), dtype=np.float32)
     for k in xrange(class_labels.shape[1]):
@@ -262,14 +269,6 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
                     kernels_tr[feat_t]['nodes'] = [utils.normalize(a_i[1]*x[0]+(1-a_i[1])*x[1] if len(x)==2 else x[0])
                                                    for x in kernels_tr[feat_t]['nodes']]
 
-                    # for j,Kr in enumerate(kernels_tr[feat_t]['root']):
-                    #     K = None
-                    #     if np.sum(Kr) > 0:
-                    #         K = a_i[2]*Kr + (1-a_i[2])*kernels_tr[feat_t]['nodes'][j]
-                    #     else:
-                    #         K = kernels_tr[feat_t]['nodes'][j]
-                    #     kernels_tmp.append(K)
-                    # kernels_tr[feat_t] = kernels_tmp
                     kernels_tr[feat_t] = list(a_i[2]*np.array(kernels_tr[feat_t]['root']) + (1-a_i[2])*np.array(kernels_tr[feat_t]['nodes']))
 
             K_tr = None
@@ -280,7 +279,7 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
                 K_tr += a_i[3][j] * utils.sum_of_arrays(kernels_tr[feat_t], a_i[0])
 
             if square_kernels:
-                K_tr = np.sqrt(K_tr)
+                K_tr = np.sign(K_tr) * np.sqrt(np.abs(K_tr))
 
             for j, c_j in enumerate(C):
                 # print l, str(i+1) + '/' + str(len(C[k][0])), str(j+1) + '/' + str(len(C[k][1]))
@@ -289,16 +288,16 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
                     # test instances not indexed directly, but a mask is created excluding negative instances
                     val_te_msk = np.ones(tr_inds.shape, dtype=np.bool)
                     val_te_msk[val_tr_inds] = False
-                    negatives_msk = np.negative(np.any(class_labels[tr_inds] > 0, axis=1))
-                    val_te_msk[negatives_msk] = False
+                    # negatives_msk = np.negative(np.any(class_labels[tr_inds] > 0, axis=1))
+                    # val_te_msk[negatives_msk] = False
 
-                    acc_tmp, ap_tmp = _train_and_classify_binary(
+                    acc_tmp, ap_tmp, _ = _train_and_classify_binary(
                         K_tr[val_tr_inds,:][:,val_tr_inds], K_tr[val_te_msk,:][:,val_tr_inds], \
                         class_labels[tr_inds,k][val_tr_inds], class_labels[tr_inds,k][val_te_msk], \
-                        c_j)
+                        probability=False, c=c_j)
 
                     if str.lower(opt_criterion) == 'map':
-                        Rval[k,i,j] += ap_tmp/skf.n_folds if acc_tmp > 0.50 else 0
+                        Rval[k,i,j] += ap_tmp/skf.n_folds  # if acc_tmp > 0.50 else 0
                     else: # 'acc' or other criterion
                         Rval[k,i,j] += acc_tmp/skf.n_folds
 
@@ -326,7 +325,7 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
         best_res = np.max(Rval[k,:,:])
         print best_res, "\t",
         results_val.append(best_res)
-    print "Validation ACC:", np.mean(results_val)
+    print("Validation best %s : %2.2f" %(opt_criterion, np.mean(results_val)*100.0))
 
 
     acc_classes = []
@@ -354,7 +353,7 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
                 for i in xrange(len(kernels_tr[feat_t]['root'])):
                     kernels_tr[feat_t]['root'][i], pr  = utils.normalization(kernels_tr[feat_t]['root'][i][0] if np.sum(kernels_tr[feat_t]['root'][i][0]) > 0
                                                                              else kernels_tr[feat_t]['nodes'][i][0])
-                    kernels_te[feat_t]['root'][i]      = pr * (kernels_te[feat_t]['root'][i][0] if np.sum(kernels_tr[feat_t]['root'][i][0]) > 0
+                    kernels_te[feat_t]['root'][i]      = pr * (kernels_te[feat_t]['root'][i][0] if np.sum(kernels_te[feat_t]['root'][i][0]) > 0
                                                                else kernels_te[feat_t]['nodes'][i][0])
 
                     xn_tr, xn_te = kernels_tr[feat_t]['nodes'][i], kernels_te[feat_t]['nodes'][i]
@@ -374,8 +373,8 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
             K_te += a_best[3][j] * utils.sum_of_arrays(kernels_te[feat_t], a_best[0])
 
         if square_kernels:
-            K_tr, K_te = np.sqrt(K_tr), np.sqrt(K_te)
-        acc, ap = _train_and_classify_binary(K_tr, K_te[te_msk], class_labels[tr_inds,k], class_labels[te_inds,k][te_msk], c=c_best)
+            K_tr, K_te = np.sign(K_tr) * np.sqrt(np.abs(K_tr)), np.sign(K_te) * np.sqrt(np.abs(K_te)) #np.sqrt(K_tr), np.sqrt(K_te)
+        acc, ap, _ = _train_and_classify_binary(K_tr, K_te[te_msk], class_labels[tr_inds,k], class_labels[te_inds,k][te_msk], c=c_best)
 
         acc_classes.append(acc)
         ap_classes.append(ap)
@@ -506,7 +505,7 @@ def simple_voting_classification(input_kernels_tr, input_kernels_te, a, feat_typ
 
     return dict(acc_classes=acc_classes, ap_classes=ap_classes)
 
-def learning_based_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_types, class_labels, train_test_idx, C=[1], nl=1):
+def learning_based_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_types, class_labels, train_test_idx, C=[1], opt_criterion='acc'):
     '''
 
     :param kernels_tr:
@@ -562,11 +561,13 @@ def learning_based_fusion_classification(input_kernels_tr, input_kernels_te, a, 
                         acc, ap = _train_and_classify_binary(
                             K_tr[val_tr_inds,:][:,val_tr_inds], K_tr[val_te_msk,:][:,val_tr_inds], \
                             class_labels[tr_inds,cl][val_tr_inds], class_labels[tr_inds,cl][val_te_msk], \
-                            c=c_j)
+                            probability=False, c=c_j)
 
                         # TODO: decide what it is
-                        # Rp[cl][k,i,j] += acc / skf.n_folds
-                        Rp[cl][k,i,j] += ap/skf.n_folds if acc > 0.5 else 0
+                        if str.lower(opt_criterion) == 'map':
+                            Rp[cl][k,i,j] += acc / skf.n_folds
+                        else:
+                            Rp[cl][k,i,j] += ap/skf.n_folds if acc > 0.5 else 0
 
     params = [None] * class_labels.shape[1]
     perfs = [None] * class_labels.shape[1]
@@ -617,7 +618,10 @@ def learning_based_fusion_classification(input_kernels_tr, input_kernels_te, a, 
         y_tr = np.concatenate(y_tr)
         n = len(class_labels[tr_inds,cl])
         # LOOCV = cross_validation.KFold(n, n_folds=n)
-        grid_scorer = make_scorer(average_precision_score, greater_is_better=True)
+        if str.lower(opt_criterion) == 'map':
+            grid_scorer = make_scorer(average_precision_score, greater_is_better=True)
+        else:
+            grid_scorer = make_scorer(average_binary_accuracy, greater_is_better=True)
         LOOCV = cross_validation.StratifiedKFold(class_labels[tr_inds,cl], n_folds=3, shuffle=False, random_state=74)
         clfs[cl] = grid_search.GridSearchCV(svm.SVC(), svm_parameters, \
                                        n_jobs=20, cv=LOOCV, scoring=grid_scorer, verbose=False)
@@ -641,9 +645,7 @@ def learning_based_fusion_classification(input_kernels_tr, input_kernels_te, a, 
 
         for k,x in enumerate(kernels_tr):
             a_val, c_val = params[cl][k,0],params[cl][k,1]
-            K_tr_aux = (a_val*x[0]+(1-a_val)*x[1]) if isinstance(x,tuple) else x
-            F[cl,k] = utils.argnormalize(K_tr_aux)
-            K_tr = F[cl,k]*K_tr_aux
+            K_tr, F[cl,k] = utils.normalization((a_val*x[0]+(1-a_val)*x[1]) if isinstance(x,tuple) else x)
             ind_clfs[cl][k] = _train_binary(K_tr, class_labels[tr_inds,cl], c=c_val)
 
     # Use a mask to exclude negatives from test
@@ -859,16 +861,16 @@ def learning_based_fusion_classification2(input_kernels_tr, input_kernels_te, a,
     return dict(acc_classes=acc_classes, ap_classes=ap_classes)
 
 
-def _train_binary(K_tr, train_labels, c=1.0):
+def _train_binary(K_tr, train_labels, probability=False, c=1.0):
     # Train
-    clf = svm.SVC(kernel='precomputed', class_weight='balanced', C=c, max_iter=-1, tol=1e-3, probability=False, verbose=False)
+    clf = svm.SVC(kernel='precomputed', class_weight='balanced', C=c, max_iter=-1, tol=1e-3, verbose=False)
     clf.fit(K_tr, train_labels)
 
     return clf
 
 
-def _train_and_classify_binary(K_tr, K_te, train_labels, test_labels, c=1.0):
-    clf = _train_binary(K_tr, train_labels, c=c)
+def _train_and_classify_binary(K_tr, K_te, train_labels, test_labels, probability=False, c=1.0):
+    clf = _train_binary(K_tr, train_labels, probability=probability, c=c)
 
     # Predict
     test_scores = clf.decision_function(K_te)
@@ -882,7 +884,7 @@ def _train_and_classify_binary(K_tr, K_te, train_labels, test_labels, c=1.0):
     ap = average_precision_score(test_labels, test_scores, average='weighted')
     # precision_recall_fscore_support
 
-    return acc, ap
+    return acc, ap, test_preds
 
 def average_binary_accuracy(test_labels, test_preds):
     # test_preds = test_scores > 0

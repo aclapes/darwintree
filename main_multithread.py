@@ -193,7 +193,7 @@ def get_highfive_config(parent_path):
 
     class_labels = class_labels[:,np.where(np.array(action_names) != 'negative')[0]]
 
-    return fullvideonames, videonames, class_labels, action_names, [traintest_parts[0]]
+    return fullvideonames, videonames, class_labels, action_names, traintest_parts
 
 
 def get_ucfsportsaction_dataset(parent_path):
@@ -336,7 +336,13 @@ desc_weights_gbl = [[1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1], \
                     [0.5,0.5,0,0], [0.5,0,0.5,0], [0.5,0,0,0.5], [0,0.5,0.5,0], [0,0.5,0,0.5], [0,0,0.5,0.5], \
                     [0,0.333,0.333,0.333], [0.333,0,0.333,0.333], [0.333,0.333,0,0.333], [0.333,0.333,0.333,0], \
                     [0.25,0.25,0.25,0.25]]
-C_gbl = [0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 25, 50, 100]
+
+desc_weights_gbl = [[1,0,0], [0,1,0], [0,0,1], \
+                    [0.5,0.5,0], [0.5,0,0.5], [0,0.5,0.5], \
+                    [0,0.333,0.333,0.333]]
+
+C_gbl = [1e-4, 2.5e-4, 5e-4, 7.5e-4, 1e-3, 2.5e-3, 5e-3, 7.5e-3, 1e-2, 2.5e-2, 5e-2, 7.5e-2, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10, 100]
+strategy_gbl = 'kernel_fusion'  # 'kernel_fusion', 'simple_voting', 'learning_based_fusion'
 
 # DEBUG
 # ---
@@ -371,12 +377,12 @@ if __name__ == "__main__":
         atep_bovw = kernels.compute_ATEP_kernels(feats_path + 'bovwtree/', videonames, traintest_parts, xml_config['features_list'], \
                                     kernels_path + 'atep-bovwtree/', use_disk=False, nt=nt)
 
-        combs = [c for c in itertools.product(*[[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        params = [[[1]], [1,0.5], np.linspace(0,1,21), desc_weights_gbl]
         results = classification.classify(atep_bovw, \
-                                          class_labels, traintest_parts, combs, \
+                                          class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion',
+                                          strategy=strategy_gbl,
                                           opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
@@ -389,12 +395,12 @@ if __name__ == "__main__":
         atep_bovw = kernels.compute_ATEP_kernels(feats_path + 'bovwtree-pca/', videonames, traintest_parts, xml_config['features_list'], \
                                     kernels_path + 'atep-bovwtree-pca/', use_disk=False, nt=nt)
 
-        combs = [c for c in itertools.product(*[[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        params = [[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl]
         results = classification.classify(atep_bovw, \
-                                          class_labels, traintest_parts, combs, \
+                                          class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion',
+                                          strategy=strategy_gbl,
                                           opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
@@ -408,12 +414,12 @@ if __name__ == "__main__":
                                             kernels_path + 'atep-fvtree/', use_disk=False, nt=nt)
 
 
-        combs = [c for c in itertools.product(*[[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        params = [[[1]], [1], np.linspace(0,1,21), desc_weights_gbl]
         results = classification.classify(atep_fv, \
-                                          class_labels, traintest_parts, combs, \
+                                          class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion',
+                                          strategy=strategy_gbl,
                                           opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
@@ -426,12 +432,12 @@ if __name__ == "__main__":
         atep_fv = kernels.compute_ATEP_kernels(feats_path + 'fvtree-pca/', videonames, traintest_parts, xml_config['features_list'], \
                                             kernels_path + 'atep-fvtree-pca/', use_disk=False, nt=nt)
 
-        combs = [c for c in itertools.product(*[[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        params = [[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl]
         results = classification.classify(atep_fv, \
-                                          class_labels, traintest_parts, combs, \
+                                          class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion',
+                                          strategy=strategy_gbl,
                                           opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
@@ -445,12 +451,12 @@ if __name__ == "__main__":
         atep_vd = kernels.compute_ATEP_kernels(feats_path + 'vdtree/', videonames, traintest_parts, xml_config['features_list'], \
                                                kernels_path + 'atep-vdtree/', use_disk=False, nt=nt)
 
-        combs = [c for c in itertools.product(*[[[1]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        params = [[[1]], [1,0.5], np.linspace(0,1,21), desc_weights_gbl]
         results = classification.classify(atep_vd, \
-                                          class_labels, traintest_parts, combs, \
+                                          class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
-                                          C=[1],
-                                          strategy='kernel_fusion',
+                                          C=C_gbl,
+                                          strategy=strategy_gbl,
                                           opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
@@ -463,12 +469,12 @@ if __name__ == "__main__":
         atnbep_fv = kernels.compute_ATNBEP_kernels(feats_path + 'fvtree/', videonames, traintest_parts, xml_config['features_list'], \
                                                    kernels_path + 'atnbep-fvtree/', use_disk=False, nt=nt)
 
-        combs = [c for c in itertools.product(*[[[1]], [1], [0], desc_weights_gbl])]
+        params = [[[1]], [1], [0], desc_weights_gbl]
         results = classification.classify(atnbep_fv, \
-                                          class_labels, traintest_parts, combs, \
+                                          class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion',
+                                          strategy=strategy_gbl,
                                           opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
@@ -488,12 +494,12 @@ if __name__ == "__main__":
 
         merged = [utils.merge_dictionaries([atep_fv[i], atep_vd[i]]) for i in xrange(len(atep_fv))]
 
-        combs = [c for c in itertools.product(*[[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        params = [[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), desc_weights_gbl]
         results = classification.classify(merged, \
-                                          class_labels, traintest_parts, combs, \
+                                          class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion',
+                                          strategy=strategy_gbl,
                                           opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
@@ -510,12 +516,12 @@ if __name__ == "__main__":
 
         merged = [utils.merge_dictionaries([atep_fv[i], atnbep_fv[i]]) for i in xrange(len(atep_fv))]
 
-        combs = [c for c in itertools.product(*[[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        params = [[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), desc_weights_gbl]
         results = classification.classify(merged, \
-                                          class_labels, traintest_parts, combs, \
+                                          class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion',
+                                          strategy=strategy_gbl,
                                           opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
@@ -536,12 +542,12 @@ if __name__ == "__main__":
 
         merged = [utils.merge_dictionaries([atep_vd[i], atnbep_fv[i]]) for i in xrange(len(atep_vd))]
 
-        combs = [c for c in itertools.product(*[[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        params = [[[0,1],[0.5,0.5],[1,0]], [0.5], np.linspace(0,1,11), desc_weights_gbl]
         results = classification.classify(merged, \
-                                          class_labels, traintest_parts, combs, \
+                                          class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion',
+                                          strategy=strategy_gbl,
                                           opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 
@@ -566,12 +572,12 @@ if __name__ == "__main__":
         merged = [utils.merge_dictionaries([merged[i], atnbep_fv[i]]) for i in xrange(len(merged))]
 
         w = [[1,0,0],[0,1,0],[0,0,1],[.5,.5,0],[0,.5,.5],[.5,0,.5],[.333,.333,.333]]
-        combs = [c for c in itertools.product(*[w, [0.5], np.linspace(0,1,11), desc_weights_gbl])]
+        params = [w, [1,0.5], np.linspace(0,1,21), desc_weights_gbl]
         results = classification.classify(merged, \
-                                          class_labels, traintest_parts, combs, \
+                                          class_labels, traintest_parts, params, \
                                           xml_config['features_list'], \
                                           C=C_gbl,
-                                          strategy='kernel_fusion',
+                                          strategy=strategy_gbl,
                                           opt_criterion=xml_config['opt_criterion'])
         classification.print_results(results)
 

@@ -37,8 +37,8 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
         total = len(videonames)
 
         for feat_t in feat_types:
-            train_filepath = join(kernels_output_path, 'train-' + feat_t + '-' + str(k) + '.pkl')
-            test_filepath = join(kernels_output_path, 'test-' + feat_t + '-' + str(k) + '.pkl')
+            train_filepath = join(kernels_output_path, 'linear-train-' + feat_t + '-' + str(k) + '.pkl')
+            test_filepath = join(kernels_output_path, 'linear-test-' + feat_t + '-' + str(k) + '.pkl')
             if isfile(train_filepath) and isfile(test_filepath):
                 with open(train_filepath, 'rb') as f:
                     data = cPickle.load(f)
@@ -69,7 +69,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                         Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
                 except IOError:
                     if use_disk:
-                        Kr_train, Kn_train = intersection_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
+                        Kr_train, Kn_train = linear_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
                     else:
                         D_train = dict()
                         for i, idx in enumerate(train_inds):
@@ -85,7 +85,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
 
                         st_kernel = time.time()
                         print("[Kernel computation] Compute kernel matrix %s .." % (feat_t))
-                        Kr_train, Kn_train = intersection_kernel(D_train, n_channels=2, nt=nt)
+                        Kr_train, Kn_train = linear_kernel(D_train, n_channels=2, nt=nt)
                         print("[Kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(train_filepath, 'wb') as f:
@@ -97,7 +97,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                         Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
                 except IOError:
                     if use_disk:
-                        Kr_test, Kn_test = intersection_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                        Kr_test, Kn_test = linear_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
                     else:
                         if not 'D_train' in locals():
                             D_train = dict()
@@ -128,7 +128,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
 
                         st_kernel = time.time()
                         print("[Kernel computation] Compute kernel matrix %s .." % (feat_t))
-                        Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
+                        Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
                         print("[Kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(test_filepath, 'wb') as f:
@@ -393,7 +393,7 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
         is_symmetric = False
 
     if verbose:
-        print('Computing fast %dx%d intersection kernel ...\n' % (len(X['root']),len(Y['root'])))
+        print('Computing fast %dx%d kernel ...\n' % (len(X['root']),len(Y['root'])))
 
     shuffle(points)  # so all threads have similar workload
 
@@ -409,6 +409,112 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
     #     Ke += r[1]
     # ---
     ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel)(X['root'][i], Y['root'][j], X['nodes'][i], Y['nodes'][j],
+                                                                             n_channels=n_channels, job_id=job_id, verbose=True)
+                                               for job_id,(i,j) in enumerate(points))
+
+    Kr = np.zeros((n_channels,len(X['root']),len(Y['root'])), dtype=np.float64)  # root kernel
+    Ke = Kr.copy()
+    # aggregate results of parallel computations
+    for job_id, res in ret:
+        i,j = points[job_id]
+        for c in xrange(n_channels):
+            Kr[c,i,j], Ke[c,i,j] = res[c,0], res[c,1]
+    # ---
+
+    # if symmetric, replicate upper to lower triangle matrix
+    if is_symmetric:
+        for i in xrange(n_channels):
+            Kr[i] += np.triu(Kr[i],1).T
+            Ke[i] += np.triu(Ke[i],1).T
+
+    return Kr, Ke
+
+def chisquare_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
+    points = []
+
+    X['root'] = [[np.abs(root[i]) for i in xrange(n_channels)] for root in X['root']]
+    X['nodes'] = [[[np.abs(node[i]) for i in xrange(n_channels)] for node in tree] for tree in X['nodes']]
+    if Y is None:
+        # generate combinations
+        points += [(i,i) for i in xrange(len(X['root']))]  # diagonal
+        points += [p for p in itertools.combinations(np.arange(len(X['root'])),2)]  # upper-triangle combinations
+        is_symmetric = True
+        Y = X
+    else:
+        Y['root'] = [[np.abs(root[i]) for i in xrange(n_channels)] for root in Y['root']]
+        Y['nodes'] = [[[np.abs(node[i]) for i in xrange(n_channels)] for node in tree] for tree in Y['nodes']]
+        # generate product
+        points += [ p for p in itertools.product(*[np.arange(len(X['root'])),np.arange(len(Y['root']))]) ]
+        is_symmetric = False
+
+    if verbose:
+        print('Computing fast %dx%d kernel ...\n' % (len(X['root']),len(Y['root'])))
+
+    shuffle(points)  # so all threads have similar workload
+
+    step = np.int(np.floor(len(points)/nt)+1)
+    # ---
+    # ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel_batch)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))],
+    #                                                                              n_channels=n_channels, job_id=i, verbose=True)
+    #                                                for i in xrange(nt))
+    # # aggregate results of parallel computations
+    # Kr, Ke = ret[0][0], ret[0][1]
+    # for r in ret[1:]:
+    #     Kr += r[0]
+    #     Ke += r[1]
+    # ---
+    ret = Parallel(n_jobs=nt, backend='threading')(delayed(_chisquare_kernel)(X['root'][i], Y['root'][j], X['nodes'][i], Y['nodes'][j],
+                                                                             n_channels=n_channels, job_id=job_id, verbose=True)
+                                               for job_id,(i,j) in enumerate(points))
+
+    Kr = np.zeros((n_channels,len(X['root']),len(Y['root'])), dtype=np.float64)  # root kernel
+    Ke = Kr.copy()
+    # aggregate results of parallel computations
+    for job_id, res in ret:
+        i,j = points[job_id]
+        for c in xrange(n_channels):
+            Kr[c,i,j], Ke[c,i,j] = res[c,0], res[c,1]
+    # ---
+
+    # if symmetric, replicate upper to lower triangle matrix
+    if is_symmetric:
+        for i in xrange(n_channels):
+            Kr[i] += np.triu(Kr[i],1).T
+            Ke[i] += np.triu(Ke[i],1).T
+
+    return Kr, Ke
+
+def linear_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
+    points = []
+
+    if Y is None:
+        # generate combinations
+        points += [(i,i) for i in xrange(len(X['root']))]  # diagonal
+        points += [p for p in itertools.combinations(np.arange(len(X['root'])),2)]  # upper-triangle combinations
+        is_symmetric = True
+        Y = X
+    else:
+        # generate product
+        points += [ p for p in itertools.product(*[np.arange(len(X['root'])),np.arange(len(Y['root']))]) ]
+        is_symmetric = False
+
+    if verbose:
+        print('Computing fast %dx%d kernel ...\n' % (len(X['root']),len(Y['root'])))
+
+    shuffle(points)  # so all threads have similar workload
+
+    step = np.int(np.floor(len(points)/nt)+1)
+    # ---
+    # ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel_batch)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))],
+    #                                                                              n_channels=n_channels, job_id=i, verbose=True)
+    #                                                for i in xrange(nt))
+    # # aggregate results of parallel computations
+    # Kr, Ke = ret[0][0], ret[0][1]
+    # for r in ret[1:]:
+    #     Kr += r[0]
+    #     Ke += r[1]
+    # ---
+    ret = Parallel(n_jobs=nt, backend='threading')(delayed(_linear_kernel)(X['root'][i], Y['root'][j], X['nodes'][i], Y['nodes'][j],
                                                                              n_channels=n_channels, job_id=job_id, verbose=True)
                                                for job_id,(i,j) in enumerate(points))
 
@@ -528,4 +634,74 @@ def _intersection_kernel(Xr, Yr, Xn, Yn, n_channels=1, job_id=None, verbose=True
         K[k,1] /= (len(Xn) * len(Yn))
 
     return job_id, K
+
+
+def _chisquare_kernel(Xr, Yr, Xn, Yn, gamma=1.0, n_channels=1, job_id=None, verbose=True):
+    '''
+    Data is assumed to be non-negative and L-normalized
+    :param Xr:
+    :param Yr:
+    :param Xn:
+    :param Yn:
+    :param gamma:
+    :param n_channels:
+    :param job_id:
+    :param verbose:
+    :return:
+    '''
+    K = np.zeros((n_channels,2), dtype=np.float64)
+
+    if verbose and (job_id % 10 == 0):
+        print('[Parallel chisquare kernel] Job id %d, progress = ?]' % (job_id))
+
+    for k in xrange(n_channels):
+        div = Xr[k] + Yr[k]
+        div[div < 1e-7] = 1.0
+        K[k,0] = np.sum(np.power(Xr[k] - Yr[k],2) / div)
+
+    # pair-wise intersection of edges' histograms
+    for node_i in xrange(len(Xn)):
+        for node_j in xrange(len(Yn)):
+            for k in xrange(n_channels):
+                div = Xn[node_i][k] + Yn[node_j][k]
+                div[div < 1e-7] = 1.0
+                K[k,1] += np.sum( np.power(Xn[node_i][k] - Yn[node_j][k],2) / div )
+
+    for k in xrange(n_channels):
+        K[k,1] /= (len(Xn) * len(Yn))
+
+    return job_id, K
+
+def _linear_kernel(Xr, Yr, Xn, Yn, n_channels=1, job_id=None, verbose=True):
+    '''
+    :param Xr:
+    :param Yr:
+    :param Xn:
+    :param Yn:
+    :param gamma:
+    :param n_channels:
+    :param job_id:
+    :param verbose:
+    :return:
+    '''
+    K = np.zeros((n_channels,2), dtype=np.float64)
+
+    if verbose and (job_id % 10 == 0):
+        print('[Parallel linear kernel] Job id %d, progress = ?]' % (job_id))
+
+    for k in xrange(n_channels):
+        K[k,0] = np.dot(Xr[k],Yr[k])
+
+    # pair-wise intersection of edges' histograms
+    for node_i in xrange(len(Xn)):
+        for node_j in xrange(len(Yn)):
+            for k in xrange(n_channels):
+                K[k,1] += np.dot(Xn[node_i][k], Yn[node_j][k])
+
+    for k in xrange(n_channels):
+        K[k,1] /= (len(Xn) * len(Yn))
+
+    return job_id, K
+
+
 
