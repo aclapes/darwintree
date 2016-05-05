@@ -30,7 +30,9 @@ def normalizeL2(X):
     return X / np.sqrt(np.sum(np.multiply(X,X), axis=1))
 
 def linearSVR(X, c_param, norm=2):
-    if norm == 2:
+    if norm == 1:
+        XX = normalizeL1(X)
+    else:
         XX = normalizeL2(X)
 
     T = X.shape[0] # temporal length
@@ -41,6 +43,11 @@ def linearSVR(X, c_param, norm=2):
     return clf.coef_
 
 def darwin(X, c_svm_param=1):
+    w_fw, w_rv = _darwin(X, c_svm_param=c_svm_param)
+
+    return np.concatenate([w_fw, w_rv])
+
+def _darwin(X, c_svm_param=1):
     '''
     Computes the videodarwin representation of a multi-variate temporal series.
     :param X: a N-by-T matrix, with N the number of features and T the time instants.
@@ -57,4 +64,4 @@ def darwin(X, c_svm_param=1):
     V = np.cumsum(np.flipud(X),axis=0) / one_to_T # reverse videodarwin
     w_rv = linearSVR(rootSIFT(V), c_svm_param, 2)
 
-    return np.concatenate([w_fw, w_rv])
+    return w_fw, w_rv

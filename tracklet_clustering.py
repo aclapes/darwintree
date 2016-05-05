@@ -1,6 +1,6 @@
 __author__ = 'aclapes'
 
-from os.path import isfile, exists
+from os.path import isfile, exists, join
 from os import makedirs
 import cPickle
 import random
@@ -61,17 +61,20 @@ def _cluster(tracklets_path, videonames, indices, clusters_path, visualize=False
     # process the videos
     total = len(videonames)
     for i in indices:
-        if isfile(clusters_path + videonames[i] + '.pkl'):
+        if isfile(join(clusters_path, videonames[i] + '.pkl')):
             print('%s -> OK' % videonames[i])
             continue
 
+        try:
+            with open(join(tracklets_path, 'obj', videonames[i] + '.pkl'), 'rb') as f:
+                data_obj = cPickle.load(f)
+            with open(join(tracklets_path, 'trj', videonames[i] + '.pkl'), 'rb') as f:
+                data_trj = cPickle.load(f)
+        except IOError:
+            sys.stderr.write("[Error] Tracklet files not found for %s." % videonames[i])
+            continue
+
         start_time = time.time()
-
-        with open(tracklets_path + 'obj/' + videonames[i] + '.pkl', 'rb') as f:
-            data_obj = cPickle.load(f)
-        with open(tracklets_path + 'trj/' + videonames[i] + '.pkl', 'rb') as f:
-            data_trj = cPickle.load(f)
-
         # (Sec. 2.2) get a dictionary of separate channels
         D = dict()
         for k in xrange(data_obj.shape[0]): # range(0,100):  #
@@ -133,9 +136,9 @@ def _cluster(tracklets_path, videonames, indices, clusters_path, visualize=False
         tree = reconstruct_tree_from_leafs(np.unique(int_paths))
 
         elapsed_time = time.time() - start_time
-        print('%s -> %s (in %.2f secs)' % (clusters_path + videonames[i] + '.pkl', 'YES' if success else 'NO', elapsed_time))
+        print('%s -> %s (in %.2f secs)' % (join(clusters_path, videonames[i] + '.pkl'), 'YES' if success else 'NO', elapsed_time))
 
-        with open(clusters_path + videonames[i] + '.pkl', 'wb') as f:
+        with open(join(clusters_path, videonames[i] + '.pkl'), 'wb') as f:
             cPickle.dump({'best_labels' : best_labels, 'int_paths' : int_paths, 'tree' : tree, 'ridge' : ridge}, f)
 
         # DEBUG

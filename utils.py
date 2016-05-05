@@ -1,5 +1,79 @@
 import numpy as np
 import copy
+import xmltodict
+
+# ==============================================================================
+# Configuration functions
+# ==============================================================================
+
+def load_XML_config(filepath):
+    """
+    Read the configuration from a .xml file in disk.
+    This sets some paths and the features to use.
+    :param filepath:
+    :return:
+    """
+    config_dict = dict()
+
+    with open(filepath) as fd:
+        xml = xmltodict.parse(fd.read())
+
+    for path in xml['configuration']['path']:
+        config_dict[path['@key']] = path['#text'].encode('utf-8')
+
+    if 'option' in xml['configuration']:
+        if not isinstance(xml['configuration']['option'], list):
+            option = xml['configuration']['option']
+            config_dict[option['@key']] = option['#text'].encode('utf-8')
+        else:
+            for option in xml['configuration']['option']:
+                config_dict[option['@key']] = option['#text'].encode('utf-8')
+        # data type conversions from str to target type
+        if 'num_threads' in config_dict:  # num threads has to be an integer
+            config_dict['num_threads'] = int(config_dict['num_threads'])
+
+    features_list = xml['configuration']['features_list']
+
+    if type(features_list['item']) is unicode:
+        config_dict.setdefault('features_list',[]).append(features_list['item'].encode('utf-8'))
+    else:
+        for item in features_list['item']:
+            feat = item.encode('utf-8')
+            config_dict.setdefault('features_list',[]).append(feat)
+
+    # methods_list = xml['configuration']['methods_list']
+    # if type(methods_list['item']) is unicode:
+    #     config_dict.setdefault('methods_list',[]).append(methods_list['item'].encode('utf-8'))
+    # else:
+    #     for item in methods_list['item']:
+    #         method = item.encode('utf-8')
+    #         config_dict.setdefault('methods_list',[]).append(method)
+
+    return config_dict
+
+
+def get_global_config(xml_config):
+    """
+    Construct some additional (output) paths from the xml configuration.
+    :param xml_config:
+    :return:
+    """
+    parent_path = xml_config['data_path'] + xml_config['dataset_name'] + '/'
+    if not isdir(parent_path):
+        makedirs(parent_path)
+
+    tracklets_path = parent_path + 'tracklets/'
+    clusters_path = parent_path + 'clusters/'
+    intermediates_path = parent_path + 'intermediates/'
+    feats_path = parent_path + 'feats/'
+    kernels_path = parent_path + 'kernels/'
+
+    return tracklets_path, clusters_path, intermediates_path, feats_path, kernels_path
+
+
+# ==============================================================================
+# Data structures handling functions
+# ==============================================================================
 
 def merge_dictionaries(dicts):
     """
@@ -59,7 +133,7 @@ def serialize_nested_dictionary(nested_dict):
     return serialized_dict
 
 
-def sum_of_arrays(arrays, weights=None, norm=None, gamma=None):
+def sum_of_arrays(arrays, weights=None, norm=None):
     if weights is None:
         weights = [1.0/len(arrays)] * len(arrays)
     if norm is 'median':
@@ -100,15 +174,15 @@ def sum_of_arrays(arrays, weights=None, norm=None, gamma=None):
 #
 #     return K, p
 
-def normalize(K, type='mean'):
+def normalize(K, type='median'):
     p = argnormalize(K, type=type)
     return p * K
 
-def normalization(K, type='mean'):
+def normalization(K, type='median'):
     p = argnormalize(K, type=type)
     return p * K, p
 
-def argnormalize(K,type='mean'):
+def argnormalize(K,type='median'):
     p = 1.0
 
     values = K[K != 0]
@@ -119,3 +193,27 @@ def argnormalize(K,type='mean'):
             p = 1.0/np.nanmedian(values)
 
     return p
+
+def uniform_weights_dist(n_weights, step=0.1):
+    D = []
+    w = n_weights * [0.]
+    pos = 0
+    acc_weight = 0.
+
+    stack = []
+    stack.append((w,pos,acc_weight))
+
+    while len(stack) > 0:
+        w, pos, acc_weight = stack.pop()
+
+        if pos >= len(w)-1 or acc_weight == 1.:
+            w[-1] = max(0, 1. - min(acc_weight,1))
+            D.append(w[:])
+            continue
+
+        for x in np.arange(0, 1.-acc_weight+step, step):
+            ww = w[:]
+            ww[pos] = x
+            stack.append((ww,pos+1,acc_weight+x))
+
+    return D

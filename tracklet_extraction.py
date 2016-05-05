@@ -20,7 +20,7 @@ INTERNAL_PARAMETERS = dict(
     L = 15,
     feats_dict = dict(
         obj = 10,
-        trj = 2,
+        trj = 2,  # 2-by-L actually
         hog = 96,
         hof = 108,
         mbh = 192
@@ -65,19 +65,20 @@ def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path):
     feats_beginend = get_features_beginend(INTERNAL_PARAMETERS['feats_dict'], INTERNAL_PARAMETERS['L'])
 
     # prepare output directories
-    try:
-        makedirs('tmpfiles/')
-    except OSError:
-        pass
 
     try:
         makedirs(tracklets_path)
     except OSError:
         pass
 
+    try:
+        makedirs(join(tracklets_path, 'tmp'))
+    except OSError:
+        pass
+
     for feat_t in feats_beginend.keys():
         try:
-            makedirs(tracklets_path + feat_t + '/')
+            makedirs(join(tracklets_path, feat_t))
         except OSError:
             pass
 
@@ -92,15 +93,17 @@ def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path):
 
         start_time = time.time()
         # extract the features into temporary file
-        tracklets_filepath = join('tmpfiles/', videonames[i] + '.tmp')
+        tracklets_filepath = join(tracklets_path, 'tmp/', videonames[i] + '.dat')
         if not isfile(tracklets_filepath):
             extract_wang_features(fullvideonames[i], INTERNAL_PARAMETERS['L'], tracklets_filepath)
 
         # read the temporary file to numpy array
+        finput = fileinput.FileInput(tracklets_filepath)
         data = []
-        for line in fileinput.input(tracklets_filepath):
+        for line in finput:
             row = np.array(line.strip().split('\t'), dtype=np.float32)
             data.append(row)
+        finput.close()
 
         try:
             data = np.vstack(data)
@@ -120,7 +123,7 @@ def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path):
 
         # store feature types separately
         for feat_t in feats_beginend.keys():
-            with open(tracklets_path + feat_t + '/' + videonames[i] + '.pkl','wb') as f:
+            with open(join(tracklets_path, feat_t, videonames[i] + '.pkl'),'wb') as f:
                 cPickle.dump(data[:, feats_beginend[feat_t][0]:feats_beginend[feat_t][1]], f)  # TODO: : -> inliners
 
         elapsed_time = time.time() - start_time
@@ -136,13 +139,13 @@ def get_features_beginend(feats_dict, L):
     feats_beginend = {'obj' : (0,                 \
                               feats_dict['obj']), \
                      'trj' : (feats_dict['obj'],                                        \
-                              feats_dict['obj']+(feats_dict['trj']*(L+1))),   \
-                     'hog' : (feats_dict['obj']+(feats_dict['trj']*(L+1)),                              \
-                              feats_dict['obj']+(feats_dict['trj']*(L+1))+feats_dict['hog']), \
-                     'hof' : (feats_dict['obj']+(feats_dict['trj']*(L+1))+feats_dict['hog'],                              \
-                              feats_dict['obj']+(feats_dict['trj']*(L+1))+feats_dict['hog']+feats_dict['hof']), \
-                     'mbh' : (feats_dict['obj']+(feats_dict['trj']*(L+1))+feats_dict['hog']+feats_dict['hof'],                           \
-                              feats_dict['obj']+(feats_dict['trj']*(L+1))+feats_dict['hog']+feats_dict['hof']+feats_dict['mbh'])}
+                              feats_dict['obj']+(feats_dict['trj']*L)),   \
+                     'hog' : (feats_dict['obj']+(feats_dict['trj']*L),                              \
+                              feats_dict['obj']+(feats_dict['trj']*L)+feats_dict['hog']), \
+                     'hof' : (feats_dict['obj']+(feats_dict['trj']*L)+feats_dict['hog'],                              \
+                              feats_dict['obj']+(feats_dict['trj']*L)+feats_dict['hog']+feats_dict['hof']), \
+                     'mbh' : (feats_dict['obj']+(feats_dict['trj']*L)+feats_dict['hog']+feats_dict['hof'],                           \
+                              feats_dict['obj']+(feats_dict['trj']*L)+feats_dict['hog']+feats_dict['hof']+feats_dict['mbh'])}
     return feats_beginend
 
 # Version using precomputed optical flow (stored in .flo files)
@@ -151,10 +154,13 @@ def extract_wang_features(videofile_path, traj_length, output_features_path):
     argsArray = ['./DenseTrackStab', videofile_path, \
                  '-L', str(traj_length)]  # DenseTrackStab is not accepting parameters, hardcoded the L in there
 
-    f = open(output_features_path,"wb")
-    proc = subprocess.Popen(' '.join(argsArray), cwd=FEATURE_EXTRACTOR_RELPATH, shell=True, stdout=f)
-    proc.communicate()
-    f.close()
+    try:
+        f = open(output_features_path,'wb')
+        proc = subprocess.Popen(' '.join(argsArray), cwd=FEATURE_EXTRACTOR_RELPATH, shell=True, stdout=f)
+        proc.communicate()
+        f.close()
+    except IOError:
+        sys.stderr.write('[Error] Cannot open file for writing: %s\n' % videofile_path)
 
 
 def filter_low_density(data, k=30, r=5):

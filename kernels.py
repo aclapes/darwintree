@@ -13,11 +13,13 @@ import itertools
 from joblib import delayed, Parallel
 from random import shuffle
 import time
+from sklearn import preprocessing
 
 import videodarwin
 from tracklet_representation import normalize
 
 def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
+                         kernel_type='linear', norm='l2', power_norm=True, \
                          nt=4, use_disk=False):
     """
     Compute All Tree Node Branch Evolution Pairs.
@@ -37,8 +39,8 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
         total = len(videonames)
 
         for feat_t in feat_types:
-            train_filepath = join(kernels_output_path, 'linear-train-' + feat_t + '-' + str(k) + '.pkl')
-            test_filepath = join(kernels_output_path, 'linear-test-' + feat_t + '-' + str(k) + '.pkl')
+            train_filepath = join(kernels_output_path, kernel_type + '-' + feat_t + '-train-' + str(k) + '.pkl')
+            test_filepath  = join(kernels_output_path, kernel_type + '-' + feat_t + '-test-'  + str(k) + '.pkl')
             if isfile(train_filepath) and isfile(test_filepath):
                 with open(train_filepath, 'rb') as f:
                     data = cPickle.load(f)
@@ -48,45 +50,44 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                     data = cPickle.load(f)
                     Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
             else:
-                kernel_repr_path = join(kernels_output_path, feat_t + '-' + str(k))
-                if not exists(kernel_repr_path):
-                    makedirs(kernel_repr_path)
-
-                # DEBUG
-                # ---
-                    # for i in xrange(total):
-                    #     construct_edge_pairs(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), join(kernel_repr_path, videonames[i] + '.pkl'))
-                # ---
-                # Parallel(n_jobs=nt, backend='multiprocessing')(delayed(construct_edge_pairs)(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
-                #                                                                        join(kernel_repr_path, videonames[i] + '.pkl'))
-                #                                          for i in xrange(total))
-                for i in xrange(total):
-                    construct_edge_pairs(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), join(kernel_repr_path, videonames[i] + '.pkl'))
-
+                # load data and compute kernels
                 try:
                     with open(train_filepath, 'rb') as f:
                         data = cPickle.load(f)
                         Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
                 except IOError:
                     if use_disk:
-                        Kr_train, Kn_train = linear_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
+                        print "TODO: revise this kernel computation using disk"
+                        quit()
+                        # if kernel_type == 'linear':
+                        #     Kr_train, Kn_train = linear_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
+                        # elif kernel_type == 'chirbf':
+                        #     Kr_train, Kn_train = chisquare_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
                     else:
                         D_train = dict()
                         for i, idx in enumerate(train_inds):
-                            print '[Kernel computation] Load train:', i, '/', len(train_inds)
+                            print('[ATEP kernel computation] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
                             try:
-                                with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
-                                    D_idx = cPickle.load(f)
-                            except:
-                                sys.stderr.write(join(kernel_repr_path, videonames[idx] + '.pkl') + '\n')
+                                with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
+                                    d = cPickle.load(f)
+                            except IOError:
+                                sys.stderr.write('[Error] Feats file not found: %s.\n' % (join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl')))
                                 sys.stderr.flush()
-                            D_train.setdefault('root',[]).append(D_idx['root'])
-                            D_train.setdefault('nodes',[]).append(D_idx['nodes'])
+                                quit()
+
+                            root, nodes = _construct_edge_pairs(d, norm=norm, power_norm=power_norm)
+                            D_train.setdefault('root',[]).append(root)
+                            D_train.setdefault('nodes',[]).append(nodes)
 
                         st_kernel = time.time()
-                        print("[Kernel computation] Compute kernel matrix %s .." % (feat_t))
-                        Kr_train, Kn_train = linear_kernel(D_train, n_channels=2, nt=nt)
-                        print("[Kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+                        print("[ATEP kernel computation] Compute kernel matrix %s .." % (feat_t))
+                        if kernel_type == 'intersection':
+                            Kr_train, Kn_train = intersection_kernel(D_train, n_channels=1, nt=nt)
+                        elif kernel_type == 'chirbf':
+                            Kr_train, Kn_train = chisquare_kernel(D_train, n_channels=1, nt=nt)
+                        else:
+                            Kr_train, Kn_train = linear_kernel(D_train, n_channels=1, nt=nt)
+                        print("[ATEP kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(train_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
@@ -97,48 +98,64 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                         Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
                 except IOError:
                     if use_disk:
-                        Kr_test, Kn_test = linear_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                        print "TODO: revise this kernel computation using disk"
+                        quit()
+                        # if kernel_type == 'linear':
+                        #     Kr_test, Kn_test = linear_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                        # elif kernel_type == 'chirbf':
+                        #     Kr_test, Kn_test = chisquare_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
                     else:
                         if not 'D_train' in locals():
                             D_train = dict()
                             for i,idx in enumerate(train_inds):
-                                print '[Kernel computation] Load train:', i, '/', len(train_inds)
+                                print('[ATEP kernel computation] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
                                 try:
-                                    with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
-                                        D_idx = cPickle.load(f)
-                                except:
-                                    sys.stderr.write(join(kernel_repr_path, videonames[idx] + '.pkl') + '\n')
+                                    with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
+                                        d = cPickle.load(f)
+                                except IOError:
+                                    sys.stderr.write('[Error] Feats file not found: %s.\n' % (join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl')))
                                     sys.stderr.flush()
+                                    quit()
 
-                                D_train.setdefault('root',[]).append(D_idx['root'])
-                                D_train.setdefault('nodes',[]).append(D_idx['nodes'])
+                                root, nodes = _construct_edge_pairs(d, norm=norm, power_norm=power_norm)
+                                D_train.setdefault('root',[]).append(root)
+                                D_train.setdefault('nodes',[]).append(nodes)
 
                         D_test = dict()
                         for i,idx in enumerate(test_inds):
-                            print '[Kernel computation] Load test:', i, '/', len(test_inds)
+                            print('[ATEP kernel computation] Load test: %s (%d/%d).' % (videonames[idx], i, len(test_inds)))
                             try:
-                                with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
-                                    D_idx = cPickle.load(f)
-                            except:
-                                sys.stderr.write(join(kernel_repr_path, videonames[idx] + '.pkl') + '\n')
+                                with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
+                                    d = cPickle.load(f)
+                            except IOError:
+                                sys.stderr.write('[Error] Feats file not found: %s.\n' % (join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl')))
                                 sys.stderr.flush()
+                                quit()
 
-                            D_test.setdefault('root',[]).append(D_idx['root'])
-                            D_test.setdefault('nodes',[]).append(D_idx['nodes'])
+                            root, nodes = _construct_edge_pairs(d, norm=norm, power_norm=power_norm)
+                            D_test.setdefault('root',[]).append(root)
+                            D_test.setdefault('nodes',[]).append(nodes)
 
                         st_kernel = time.time()
-                        print("[Kernel computation] Compute kernel matrix %s .." % (feat_t))
-                        Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
-                        print("[Kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+
+                        print("[ATEP kernel computation] Compute kernel matrix %s .." % (feat_t))
+                        if kernel_type == 'intersection':
+                            Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, n_channels=1, nt=nt)
+                        elif kernel_type == 'chirbf':
+                            Kr_test, Kn_test = chisquare_kernel(D_test, Y=D_train, n_channels=1, nt=nt)
+                        else:
+                            Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=1, nt=nt)
+
+                        print("[ATEP kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
 
             # Use also the parent
-            kernels_part.setdefault('train',{}).setdefault(feat_t,{})['root'] = (Kr_train[0], Kr_train[1])
-            kernels_part['train'][feat_t]['nodes'] = (Kn_train[0], Kn_train[1])
-            kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = (Kr_test[0], Kr_test[1])
-            kernels_part['test'][feat_t]['nodes'] = (Kn_test[0], Kn_test[1])
+            kernels_part.setdefault('train',{}).setdefault(feat_t,{})['root'] = (Kr_train[0],)
+            kernels_part['train'][feat_t]['nodes'] = (Kn_train[0],)
+            kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = (Kr_test[0],)
+            kernels_part['test'][feat_t]['nodes'] = (Kn_test[0],)
 
         kernels.append(kernels_part)
 
@@ -179,7 +196,8 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                 if not exists(kernel_repr_path):
                     makedirs(kernel_repr_path)
 
-                Parallel(n_jobs=nt, backend='threading')(delayed(construct_branch_evolutions)(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'), \
+
+                Parallel(n_jobs=nt, backend='threading')(delayed(construct_branch_evolutions)(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'),
                                                                                               join(kernel_repr_path, videonames[i] + '.pkl'))
                                                                for i in xrange(total))
                 try:
@@ -188,25 +206,26 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                         Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
                 except IOError:
                     if use_disk:
-                        Kr_train, Kn_train = linear_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
+                        Kr_train, Kn_train = linear_kernel(kernel_repr_path, videonames, train_inds, n_channels=2, nt=nt)
                     else:
                         D_train = dict()
                         for i,idx in enumerate(train_inds):
-                            print '[Kernel computation] Load train:', i, '/', len(train_inds)
+                            print('[ATNBEP kernel computation] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
                             try:
                                 with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
                                     D_idx = cPickle.load(f)
-                            except:
+                            except IOError:
                                 sys.stderr.write(join(kernel_repr_path, videonames[idx] + '.pkl') + '\n')
                                 sys.stderr.flush()
+                                quit()
 
                             D_train.setdefault('root',[]).append(D_idx['root'])
                             D_train.setdefault('nodes',[]).append(D_idx['nodes'])
 
                         st_kernel = time.time()
-                        print("[Kernel computation] Compute kernel matrix %s .." % (feat_t))
-                        Kr_train, Kn_train = linear_kernel(D_train, nt=nt)
-                        print("[Kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+                        print("[ATNBEP kernel computation] Compute kernel matrix %s .." % (feat_t))
+                        Kr_train, Kn_train = linear_kernel(D_train, n_channels=2, nt=nt)
+                        print("[ATNBEP kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(train_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
@@ -217,45 +236,54 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                         Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
                 except IOError:
                     if use_disk:
-                        Kr_test, Kn_test = linear_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                        Kr_test, Kn_test = linear_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, n_channels=2, nt=nt)
                     else:
                         if not 'D_train' in locals():
                             D_train = dict()
                             for i,idx in enumerate(train_inds):
-                                print '[Kernel computation] Load train:', i, '/', len(train_inds)
+                                print('[ATNBEP kernel computation] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
                                 try:
                                     with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
                                         D_idx = cPickle.load(f)
-                                except OSError:
+                                except IOError:
                                     sys.stderr.write(join(kernel_repr_path, videonames[idx] + '.pkl') + '\n')
                                     sys.stderr.flush()
+                                    quit()
+
                                 D_train.setdefault('root',[]).append(D_idx['root'])
                                 D_train.setdefault('nodes',[]).append(D_idx['nodes'])
 
                         D_test = dict()
                         for i,idx in enumerate(test_inds):
-                            print '[Kernel computation] Load test:', i, '/', len(test_inds)
+                            print('[ATNBEP kernel computation] Load test: %s (%d/%d).' % (videonames[idx], i, len(test_inds)))
                             try:
                                 with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
                                     D_idx = cPickle.load(f)
-                            except:
+                            except IOError:
                                 sys.stderr.write(join(kernel_repr_path, videonames[idx] + '.pkl') + '\n')
                                 sys.stderr.flush()
+                                quit()
+
                             D_test.setdefault('root',[]).append(D_idx['root'])
                             D_test.setdefault('nodes',[]).append(D_idx['nodes'])
 
                         st_kernel = time.time()
-                        print("[Kernel computation] Compute kernel matrix %s .." % (feat_t))
-                        Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, nt=nt)
-                        print("[Kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+                        print("[ATNBEP kernel computation] Compute kernel matrix %s .." % (feat_t))
+                        Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
+                        print("[ATNBEP kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
 
-            kernels_part.setdefault('train',{}).setdefault(feat_t,{})['root'] = (Kr_train[0],)
-            kernels_part['train'][feat_t]['nodes'] = (Kn_train[0],)
-            kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = (Kr_test[0],)
-            kernels_part['test'][feat_t]['nodes'] = (Kn_test[0],)
+            # kernels_part.setdefault('train',{}).setdefault(feat_t,{})['root'] = (Kr_train[0],)
+            # kernels_part['train'][feat_t]['nodes'] = (Kn_train[0],)
+            # kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = (Kr_test[0],)
+            # kernels_part['test'][feat_t]['nodes'] = (Kn_test[0],)
+
+            kernels_part.setdefault('train',{}).setdefault(feat_t,{})['root'] = (Kr_train[0],Kr_train[1])
+            kernels_part['train'][feat_t]['nodes'] = (Kn_train[0],Kn_train[1])
+            kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = (Kr_test[0],Kr_test[0])
+            kernels_part['test'][feat_t]['nodes'] = (Kn_test[0],Kn_test[1])
 
         kernels.append(kernels_part)
 
@@ -266,14 +294,14 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
 # Helper functions
 # ==============================================================================
 
-def construct_edge_pairs(feat_repr_filepath, output_filepath):
+def construct_edge_pairs(feat_repr_filepath, output_filepath, norm='l2', power_norm=True, ):
     if not exists(output_filepath):
         try:
             print feat_repr_filepath
             with open(feat_repr_filepath, 'rb') as f:
                 data = cPickle.load(f)
 
-            root, nodes = _construct_edge_pairs(data)
+            root, nodes = _construct_edge_pairs(data, norm=norm, power_norm=power_norm)
 
             with open(output_filepath, 'wb') as f:
                 cPickle.dump(dict(root=root, nodes=nodes), f)
@@ -284,21 +312,76 @@ def construct_edge_pairs(feat_repr_filepath, output_filepath):
             quit()
 
 
-def _construct_edge_pairs(data, dtype=np.float32):
+def _construct_edge_pairs(data, norm='l2', power_norm=True, dtype=np.float32):
     """
     A tree is a list of edges, with each edge as the concatenation of the repr. of parent and child nodes.
     :param data:
     :return root, edges:
     """
-    root = (data['tree'][1].astype(dtype=dtype), np.zeros(data['tree'][1].shape, dtype=dtype))
+
+    r = data['tree'][1].astype(dtype=dtype)
+    if power_norm:
+        r = np.sign(r) * np.sqrt(np.abs(r))
+    r = preprocessing.normalize(r[np.newaxis,:], norm=norm)
+    root = [np.squeeze(r), ]
 
     edges = []
     for id in data['tree'].keys():
         if id > 1:
-            e = [data['tree'][id].astype('float32'), data['tree'][int(id/2.)].astype('float32')]
-            edges.append(e)
+            x_left = data['tree'][id].astype('float32')
+            x_right = data['tree'][int(id/2.)].astype('float32')
+            e = np.concatenate([x_left,x_right])
+
+            if power_norm:
+                e = np.sign(e) * np.sqrt(np.abs(e))
+            e = preprocessing.normalize(e[np.newaxis,:], norm=norm)
+
+            edges.append([np.squeeze(e),])
 
     return root, edges
+
+def construct_clusters(feat_repr_filepath, output_filepath, norm='l2', power_norm=True, ):
+    if not exists(output_filepath):
+        try:
+            print feat_repr_filepath
+            with open(feat_repr_filepath, 'rb') as f:
+                data = cPickle.load(f)
+
+            root, clusters = _construct_clusters(data, norm=norm, power_norm=power_norm)
+
+            with open(output_filepath, 'wb') as f:
+                cPickle.dump(dict(root=root, clusters=clusters), f)
+        except IOError:
+            sys.stderr.write('# ERROR: missing training instance'
+                             ' {}\n'.format(feat_repr_filepath))
+            sys.stderr.flush()
+            quit()
+
+
+def _construct_clusters(data, norm='l2', power_norm=True, dtype=np.float32):
+    """
+    :param data:
+    :return root, clusters:
+    """
+
+    r = data['tree'][1].astype(dtype=dtype)
+    if power_norm:
+        r = np.sign(r) * np.sqrt(np.abs(r))
+    r = preprocessing.normalize(r, norm=norm)
+    root = [np.squeeze(r), ]
+
+    clusters = []
+    for id in data['tree'].keys():
+        if id > 1:
+            c = data['tree'][id].astype('float32')
+            if power_norm:
+                c = np.sign(c) * np.sqrt(np.abs(c))
+            c = preprocessing.normalize(c,norm=norm)
+
+            clusters.append([np.squeeze(c),])
+
+    return root, clusters
+
 
 def construct_branch_evolutions(input_filepath, output_filepath):
     if not exists(output_filepath):
@@ -319,7 +402,7 @@ def construct_branch_evolutions(input_filepath, output_filepath):
     return
 
 def _construct_branch_evolutions(data, dtype=np.float32):
-    root = [np.array([0],dtype=dtype)]
+    root = [np.array([0],dtype=dtype), np.array([0],dtype=dtype)]
 
     branches = []
     for (id_i, x) in data['tree'].iteritems():
@@ -331,8 +414,8 @@ def _construct_branch_evolutions(data, dtype=np.float32):
                 X.append(data['tree'][id_j])
                 id_j /= 2
 
-            w = videodarwin.darwin(np.array(X))
-            branches.append([normalize(w)])
+            w_fw, w_rv = videodarwin._darwin(np.array(X))
+            branches.append( [normalize(w_fw), normalize(w_rv)] )
 
     return root, branches
 
