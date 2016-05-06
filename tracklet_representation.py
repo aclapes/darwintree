@@ -19,7 +19,7 @@ from Queue import PriorityQueue
 
 INTERNAL_PARAMETERS = dict(
     # dimensionality reduction
-    n_samples = 1000*256,  # See paper of "A robust and efficient video representation for action recognition"
+    n_samples = 1000000, #1000*256,  # See paper of "A robust and efficient video representation for action recognition"
     reduction_factor = 0.5,   # keep after a fraction of the dimensions after applying pca
     # bulding codebooks
     bovw_codebook_k = 4000,
@@ -31,59 +31,59 @@ INTERNAL_PARAMETERS = dict(
 
 
 def compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                             pca_reduction=False, treelike=True, clusters_path=None):
+                             pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
-                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
 
 def compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                           pca_reduction=False, treelike=True, clusters_path=None):
+                           pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
-                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
 
 def compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                           pca_reduction=False, treelike=True, clusters_path=None):
+                           pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
-                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
 
 
 def compute_bovw_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
-                                          pca_reduction=False, treelike=True, clusters_path=None):
+                                          pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     inds = np.linspace(st, st+num_videos-1, num_videos)
     _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
-                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
 
 def compute_fv_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
-                                        pca_reduction=False, treelike=True, clusters_path=None):
+                                        pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     inds = np.linspace(st, st+num_videos-1, num_videos)
     _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
-                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
 
 def compute_vd_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
-                                        pca_reduction=False, treelike=True, clusters_path=None):
+                                        pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     inds = np.linspace(st, st+num_videos-1, num_videos)
     _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
-                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
 
 
 def compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                                         nt=4, pca_reduction=False, treelike=True, clusters_path=None):
+                                         nt=4, pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     Parallel(n_jobs=nt, backend='threading')(delayed(_compute_bovw_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
                                                                                 [i], feat_types, feats_path, \
-                                                                                pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+                                                                                pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
                                                            for i in xrange(len(videonames)))
 
 def compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                                       nt=4, pca_reduction=False, treelike=True, clusters_path=None):
+                                       nt=4, pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     Parallel(n_jobs=nt, backend='threading')(delayed(_compute_fv_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
                                                                               [i], feat_types, feats_path, \
-                                                                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+                                                                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
                                                            for i in xrange(len(videonames)))
 
 def compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                                       nt=4, pca_reduction=False, treelike=True, clusters_path=None):
+                                       nt=4, pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     Parallel(n_jobs=nt, backend='threading')(delayed(_compute_vd_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
                                                                               [i], feat_types, feats_path, \
-                                                                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path)
+                                                                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
                                                            for i in xrange(len(videonames)))
 
 
@@ -93,7 +93,7 @@ def compute_vd_descriptors_multithread(tracklets_path, intermediates_path, video
 
 
 def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
-                              pca_reduction=False, treelike=True, clusters_path=None):
+                              pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     try:
         makedirs(feats_path)
     except OSError:
@@ -116,7 +116,8 @@ def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, tr
             all_done = np.all([isfile(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'))
                                for feat_t in feat_types])
             if all_done:
-                print('%s -> OK' % videonames[i])
+                if verbose:
+                    print('[_compute_bovw_descriptors] %s -> OK' % videonames[i])
                 continue
 
             if cache is None:
@@ -162,22 +163,26 @@ def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, tr
                     with open(join(clusters_path, videonames[i] + '.pkl'), 'rb') as f:
                         clusters = cPickle.load(f)
 
-                    T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
                     bovwtree = dict()
-                    for parent_idx, children_inds in T.iteritems():
-                        # (in a global representation)
-                        node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
-                        bovwtree[parent_idx] = bovw(cache[feat_t]['codebook'], d[node_inds,:])  # bovw vec
+                    if len(clusters['tree']) == 1:
+                        bovwtree[1] = bovw(cache[feat_t]['codebook'], d)
+                    else:
+                        T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
+                        for parent_idx, children_inds in T.iteritems():
+                            # (in a global representation)
+                            node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
+                            bovwtree[parent_idx] = bovw(cache[feat_t]['codebook'], d[node_inds,:])  # bovw vec
 
                     with open(output_filepath, 'wb') as f:
                         cPickle.dump(dict(tree=bovwtree), f)
 
             elapsed_time = time.time() - start_time
-            print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
+            if verbose:
+                print('[_compute_bovw_descriptors] %s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
 
 def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
-                            pca_reduction=False, treelike=True, clusters_path=None):
+                            pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     try:
         makedirs(feats_path)
     except OSError:
@@ -199,7 +204,8 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
             all_done = np.all([isfile(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'))
                                for feat_t in feat_types])
             if all_done:
-                print('%s -> OK' % videonames[i])
+                if verbose:
+                    print('[_compute_fv_descriptors] %s -> OK' % videonames[i])
                 continue
 
             if cache is None:
@@ -263,11 +269,12 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
                         cPickle.dump(dict(tree=fvtree), f)
 
             elapsed_time = time.time() - start_time
-            print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
+            if verbose:
+                print('[_compute_fv_descriptors] %s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
 
 def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, indices, feat_types, feats_path, \
-                            pca_reduction=False, treelike=True, clusters_path=None):
+                            pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     try:
         makedirs(feats_path)
     except OSError:
@@ -291,7 +298,8 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
             all_done = np.all([isfile(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'))
                    for feat_t in feat_types])
             if all_done:
-                print('%s -> OK' % videonames[i])
+                if verbose:
+                    print('[_compute_vd_descriptors] %s -> OK' % videonames[i])
                 continue
 
             if cache is None:
@@ -362,7 +370,6 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                             # (in a per-frame representation)
                             node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
                             fids = np.unique(obj[node_inds,0])
-                            # dim = INTERNAL_PARAMETERS['fv_gmm_k'] * len(INTERNAL_PARAMETERS['fv_repr_feats']) * d.shape[1]
                             V = []
                             for f in fids:
                                 tmp = d[np.where(obj[node_inds,0] == f)[0],:]
@@ -374,10 +381,11 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                         cPickle.dump(dict(tree=vdtree), f)
 
             elapsed_time = time.time() - start_time
-            print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
+            if verbose:
+                print('[_compute_vd_descriptors] %s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
 
-def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=False, nt=1):
+def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=False, nt=1, verbose=False):
     try:
         makedirs(intermediates_path)
     except OSError:
@@ -390,14 +398,16 @@ def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types
 
         # process the videos
         for i, feat_t in enumerate(feat_types):
-            output_filepath = join(intermediates_path, 'bovw' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl')
+            output_filepath = join(intermediates_path, 'bovw' + ('-' if pca_reduction else '-nopca-') + feat_t + '-' + str(k) + '.pkl')
+
             if isfile(output_filepath):
-                print('%s -> OK' % output_filepath)
+                if verbose:
+                    print('[train_bovw_codebooks] %s -> OK' % output_filepath)
                 continue
 
             start_time = time.time()
 
-            D = load_tracklets_sample(tracklets_path, videonames, train_inds, feat_t, num_samples_per_vid)
+            D = load_tracklets_sample(tracklets_path, videonames, train_inds, feat_t, num_samples_per_vid, verbose=verbose)
 
             # (special case) trajectory features are originally positions
             if feat_t == 'trj':
@@ -410,7 +420,8 @@ def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types
             else:
                 D = preprocessing.normalize(D, norm='l1', axis=1)
 
-            D = rootSIFT(D)
+            if feat_t != 'trj':
+                D = rootSIFT(D)
 
             # compute PCA map and reduce dimensionality
             if pca_reduction:
@@ -421,16 +432,17 @@ def train_bovw_codebooks(tracklets_path, videonames, traintest_parts, feat_types
             D = np.ascontiguousarray(D, dtype=np.float32)
             cb = ynumpy.kmeans(D, INTERNAL_PARAMETERS['bovw_codebook_k'], \
                                distance_type=2, nt=nt, niter=100, seed=0, redo=1, \
-                               verbose=True, normalize=False, init='kmeans++')
+                               verbose=verbose, normalize=False, init='kmeans++')
 
             with open(output_filepath, 'wb') as f:
                 cPickle.dump(dict(pca=(pca if pca_reduction else None), codebook=cb), f)
 
             elapsed_time = time.time() - start_time
-            print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
+            if verbose:
+                print('[train_bovw_codebooks] %s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
 
 
-def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=False, nt=4):
+def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, intermediates_path, pca_reduction=False, nt=4, verbose=False):
     try:
         makedirs(intermediates_path)
     except OSError:
@@ -447,45 +459,49 @@ def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, inter
             # Train GMMs
             output_filepath = join(intermediates_path, 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl')
             if isfile(output_filepath):
-                print('%s -> OK' % output_filepath)
+                if verbose:
+                    print('[train_fv_gmms] %s -> OK' % output_filepath)
+                continue
+
+            start_time = time.time()
+
+            D = load_tracklets_sample(tracklets_path, videonames, train_inds, feat_t, num_samples_per_vid, verbose=verbose)
+
+            # (special case) trajectory features are originally positions
+            if feat_t == 'trj':
+                D = convert_positions_to_displacements(D)
+
+            if feat_t == 'mbh':
+                Dx = preprocessing.normalize(D[:,:D.shape[1]/2], norm='l1', axis=1)
+                Dy = preprocessing.normalize(D[:,D.shape[1]/2:], norm='l1', axis=1)
+                D = np.hstack((Dx,Dy))
             else:
-                start_time = time.time()
+                D = preprocessing.normalize(D, norm='l1', axis=1)
 
-                D = load_tracklets_sample(tracklets_path, videonames, train_inds, feat_t, num_samples_per_vid)
-
-                # (special case) trajectory features are originally positions
-                if feat_t == 'trj':
-                    D = convert_positions_to_displacements(D)
-
-                if feat_t == 'mbh':
-                    Dx = preprocessing.normalize(D[:,:D.shape[1]/2], norm='l1', axis=1)
-                    Dy = preprocessing.normalize(D[:,D.shape[1]/2:], norm='l1', axis=1)
-                    D = np.hstack((Dx,Dy))
-                else:
-                    D = preprocessing.normalize(D, norm='l1', axis=1)
-
+            if feat_t != 'trj':
                 D = rootSIFT(D)
 
-                # compute PCA map and reduce dimensionality
-                if pca_reduction:
-                    pca = PCA(n_components=int(INTERNAL_PARAMETERS['reduction_factor']*D.shape[1]), copy=False)
-                    D = pca.fit_transform(D)
+            # compute PCA map and reduce dimensionality
+            if pca_reduction:
+                pca = PCA(n_components=int(INTERNAL_PARAMETERS['reduction_factor']*D.shape[1]), copy=False)
+                D = pca.fit_transform(D)
 
-                # train GMMs for later FV computation
-                D = np.ascontiguousarray(D, dtype=np.float32)
-                gmm = ynumpy.gmm_learn(D, INTERNAL_PARAMETERS['fv_gmm_k'], nt=nt, niter=500, redo=1)
+            # train GMMs for later FV computation
+            D = np.ascontiguousarray(D, dtype=np.float32)
+            gmm = ynumpy.gmm_learn(D, INTERNAL_PARAMETERS['fv_gmm_k'], nt=nt, niter=500, redo=1, verbose=verbose)
 
-                with open(output_filepath, 'wb') as f:
-                    cPickle.dump(dict(pca=(pca if pca_reduction else None), gmm=gmm), f)
-                with open(join(intermediates_path, 'gmm-sample' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl'), 'wb') as f:
-                    cPickle.dump(D,f)
+            with open(output_filepath, 'wb') as f:
+                cPickle.dump(dict(pca=(pca if pca_reduction else None), gmm=gmm), f)
+            # with open(join(intermediates_path, 'gmm-sample' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl'), 'wb') as f:
+            #     cPickle.dump(D,f)
 
-                elapsed_time = time.time() - start_time
-                print('%s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
+            elapsed_time = time.time() - start_time
+            if verbose:
+                print('[train_fv_gmms] %s -> DONE (in %.2f secs)' % (feat_t, elapsed_time))
 
 
 
-def load_tracklets_sample(tracklets_path, videonames, data_inds, feat_t, num_samples_per_vid):
+def load_tracklets_sample(tracklets_path, videonames, data_inds, feat_t, num_samples_per_vid, verbose=False):
     D = None  # feat_t's sampled tracklets
     ptr = 0
     for j in range(0, len(data_inds)):
@@ -500,7 +516,8 @@ def load_tracklets_sample(tracklets_path, videonames, data_inds, feat_t, num_sam
 
         with open(filepath, 'rb') as f:
             d = cPickle.load(f)
-            print filepath, d.shape
+            if verbose:
+                print('[load_tracklets_sample] %s (num feats: %d)' % (filepath, d.shape[1]))
 
         # init sample
         if D is None:

@@ -20,7 +20,7 @@ from tracklet_representation import normalize
 
 def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
                          kernel_type='linear', norm='l2', power_norm=True, \
-                         nt=4, use_disk=False):
+                         nt=4, use_disk=False, verbose=False):
     """
     Compute All Tree Node Branch Evolution Pairs.
     :param feats_path:
@@ -39,8 +39,8 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
         total = len(videonames)
 
         for feat_t in feat_types:
-            train_filepath = join(kernels_output_path, kernel_type + '-' + feat_t + '-train-' + str(k) + '.pkl')
-            test_filepath  = join(kernels_output_path, kernel_type + '-' + feat_t + '-test-'  + str(k) + '.pkl')
+            train_filepath = join(kernels_output_path, kernel_type + ('-p-' if power_norm else '-') + feat_t + '-train-' + str(k) + '.pkl')
+            test_filepath  = join(kernels_output_path, kernel_type + ('-p-' if power_norm else '-') + feat_t + '-test-'  + str(k) + '.pkl')
             if isfile(train_filepath) and isfile(test_filepath):
                 with open(train_filepath, 'rb') as f:
                     data = cPickle.load(f)
@@ -50,6 +50,9 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                     data = cPickle.load(f)
                     Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
             else:
+                if not exists(kernels_output_path):
+                    makedirs(kernels_output_path)
+
                 # load data and compute kernels
                 try:
                     with open(train_filepath, 'rb') as f:
@@ -57,7 +60,6 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                         Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
                 except IOError:
                     if use_disk:
-                        print "TODO: revise this kernel computation using disk"
                         quit()
                         # if kernel_type == 'linear':
                         #     Kr_train, Kn_train = linear_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
@@ -66,7 +68,8 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                     else:
                         D_train = dict()
                         for i, idx in enumerate(train_inds):
-                            print('[ATEP kernel computation] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
+                            if verbose:
+                                print('[compute_ATEP_kernels] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
                             try:
                                 with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
                                     d = cPickle.load(f)
@@ -80,14 +83,16 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                             D_train.setdefault('nodes',[]).append(nodes)
 
                         st_kernel = time.time()
-                        print("[ATEP kernel computation] Compute kernel matrix %s .." % (feat_t))
+                        if verbose:
+                            print("[compute_ATEP_kernels] Compute kernel matrix %s .." % (feat_t))
                         if kernel_type == 'intersection':
-                            Kr_train, Kn_train = intersection_kernel(D_train, n_channels=1, nt=nt)
+                            Kr_train, Kn_train = intersection_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
                         elif kernel_type == 'chirbf':
-                            Kr_train, Kn_train = chisquare_kernel(D_train, n_channels=1, nt=nt)
+                            Kr_train, Kn_train = chisquare_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
                         else:
-                            Kr_train, Kn_train = linear_kernel(D_train, n_channels=1, nt=nt)
-                        print("[ATEP kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+                            Kr_train, Kn_train = linear_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
+                        if verbose:
+                            print("[compute_ATEP_kernels] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(train_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
@@ -98,7 +103,6 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                         Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
                 except IOError:
                     if use_disk:
-                        print "TODO: revise this kernel computation using disk"
                         quit()
                         # if kernel_type == 'linear':
                         #     Kr_test, Kn_test = linear_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
@@ -108,7 +112,8 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                         if not 'D_train' in locals():
                             D_train = dict()
                             for i,idx in enumerate(train_inds):
-                                print('[ATEP kernel computation] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
+                                if verbose:
+                                    print('[ATEP kernel computation] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
                                 try:
                                     with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
                                         d = cPickle.load(f)
@@ -123,7 +128,8 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
 
                         D_test = dict()
                         for i,idx in enumerate(test_inds):
-                            print('[ATEP kernel computation] Load test: %s (%d/%d).' % (videonames[idx], i, len(test_inds)))
+                            if verbose:
+                                print('[compute_ATEP_kernels] Load test: %s (%d/%d).' % (videonames[idx], i, len(test_inds)))
                             try:
                                 with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
                                     d = cPickle.load(f)
@@ -138,15 +144,16 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
 
                         st_kernel = time.time()
 
-                        print("[ATEP kernel computation] Compute kernel matrix %s .." % (feat_t))
+                        if verbose:
+                            print("[compute_ATEP_kernels] Compute kernel matrix %s .." % (feat_t))
                         if kernel_type == 'intersection':
-                            Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, n_channels=1, nt=nt)
+                            Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
                         elif kernel_type == 'chirbf':
-                            Kr_test, Kn_test = chisquare_kernel(D_test, Y=D_train, n_channels=1, nt=nt)
+                            Kr_test, Kn_test = chisquare_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
                         else:
-                            Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=1, nt=nt)
-
-                        print("[ATEP kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+                            Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
+                        if verbose:
+                            print("[compute_ATEP_kernels] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
@@ -163,7 +170,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
 
 
 def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
-                           nt=-1, use_disk=False):
+                           nt=-1, norm='l2', power_norm=True, use_disk=False, verbose=False):
     """
     Compute All Tree Node Branch Evolution Pairs.
     :param feats_path:
@@ -182,8 +189,8 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
         total = len(videonames)
 
         for feat_t in feat_types:
-            train_filepath = join(kernels_output_path, 'linear-train-' + feat_t + '-' + str(k) + '.pkl')
-            test_filepath = join(kernels_output_path, 'linear-test-' + feat_t + '-' + str(k) + '.pkl')
+            train_filepath = join(kernels_output_path, 'linear' + ('-p-' if power_norm else '-') + feat_t + '-train-' + str(k) + '.pkl')
+            test_filepath = join(kernels_output_path, 'linear' + ('-p-' if power_norm else '-') + feat_t + '-test-' + str(k) + '.pkl')
             if isfile(train_filepath) and isfile(test_filepath):
                 with open(train_filepath, 'rb') as f:
                     data = cPickle.load(f)
@@ -195,7 +202,6 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                 kernel_repr_path = join(kernels_output_path, feat_t + '-' + str(k))
                 if not exists(kernel_repr_path):
                     makedirs(kernel_repr_path)
-
 
                 Parallel(n_jobs=nt, backend='threading')(delayed(construct_branch_evolutions)(join(feats_path, feat_t + '-' + str(k), videonames[i] + '.pkl'),
                                                                                               join(kernel_repr_path, videonames[i] + '.pkl'))
@@ -210,7 +216,8 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                     else:
                         D_train = dict()
                         for i,idx in enumerate(train_inds):
-                            print('[ATNBEP kernel computation] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
+                            if verbose:
+                                print('[compute_ATNBEP_kernels] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
                             try:
                                 with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
                                     D_idx = cPickle.load(f)
@@ -223,9 +230,11 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                             D_train.setdefault('nodes',[]).append(D_idx['nodes'])
 
                         st_kernel = time.time()
-                        print("[ATNBEP kernel computation] Compute kernel matrix %s .." % (feat_t))
+                        if verbose:
+                            print("[compute_ATNBEP_kernels] Compute kernel matrix %s .." % (feat_t))
                         Kr_train, Kn_train = linear_kernel(D_train, n_channels=2, nt=nt)
-                        print("[ATNBEP kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+                        if verbose:
+                            print("[compute_ATNBEP_kernels] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(train_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
@@ -241,7 +250,8 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                         if not 'D_train' in locals():
                             D_train = dict()
                             for i,idx in enumerate(train_inds):
-                                print('[ATNBEP kernel computation] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
+                                if verbose:
+                                    print('[compute_ATNBEP_kernels] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
                                 try:
                                     with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
                                         D_idx = cPickle.load(f)
@@ -255,7 +265,8 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
 
                         D_test = dict()
                         for i,idx in enumerate(test_inds):
-                            print('[ATNBEP kernel computation] Load test: %s (%d/%d).' % (videonames[idx], i, len(test_inds)))
+                            if verbose:
+                                print('[compute_ATNBEP_kernels] Load test: %s (%d/%d).' % (videonames[idx], i, len(test_inds)))
                             try:
                                 with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
                                     D_idx = cPickle.load(f)
@@ -268,9 +279,11 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                             D_test.setdefault('nodes',[]).append(D_idx['nodes'])
 
                         st_kernel = time.time()
-                        print("[ATNBEP kernel computation] Compute kernel matrix %s .." % (feat_t))
+                        if verbose:
+                            print("[compute_ATNBEP_kernels] Compute kernel matrix %s .." % (feat_t))
                         Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
-                        print("[ATNBEP kernel computation] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+                        if verbose:
+                            print("[compute_ATNBEP_kernels] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
                     with open(test_filepath, 'wb') as f:
                         cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
@@ -330,11 +343,18 @@ def _construct_edge_pairs(data, norm='l2', power_norm=True, dtype=np.float32):
         if id > 1:
             x_left = data['tree'][id].astype('float32')
             x_right = data['tree'][int(id/2.)].astype('float32')
-            e = np.concatenate([x_left,x_right])
 
+            e = np.concatenate([x_left,x_right])
             if power_norm:
                 e = np.sign(e) * np.sqrt(np.abs(e))
             e = preprocessing.normalize(e[np.newaxis,:], norm=norm)
+
+            # if power_norm:
+            #     x_left = np.sign(x_left) * np.sqrt(np.abs(x_left))
+            #     x_right = np.sign(x_right) * np.sqrt(np.abs(x_right))
+            #
+            # e = (preprocessing.normalize(x_left[np.newaxis,:], norm=norm), preprocessing.normalize(x_right[np.newaxis,:], norm=norm) )
+            e = np.hstack(e)
 
             edges.append([np.squeeze(e),])
 
@@ -420,7 +440,7 @@ def _construct_branch_evolutions(data, dtype=np.float32):
     return root, branches
 
 
-def intersection_kernel(input_path, videonames, X, Y=None, n_channels=1, nt=1, verbose=True):
+def intersection_kernel(input_path, videonames, X, Y=None, n_channels=1, nt=1, verbose=False):
     points = []
 
     if Y is None:
@@ -457,7 +477,7 @@ def intersection_kernel(input_path, videonames, X, Y=None, n_channels=1, nt=1, v
 
     return Kr, Ke
 
-def intersection_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
+def intersection_kernel(X, Y=None, n_channels=1, nt=-1, verbose=False):
     points = []
 
     X['root'] = [[np.abs(root[i]) for i in xrange(n_channels)] for root in X['root']]
@@ -476,7 +496,7 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
         is_symmetric = False
 
     if verbose:
-        print('Computing fast %dx%d kernel ...\n' % (len(X['root']),len(Y['root'])))
+        print('[intersection_kernel] Computing fast %dx%d kernel ...\n' % (len(X['root']),len(Y['root'])))
 
     shuffle(points)  # so all threads have similar workload
 
@@ -492,7 +512,7 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
     #     Ke += r[1]
     # ---
     ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel)(X['root'][i], Y['root'][j], X['nodes'][i], Y['nodes'][j],
-                                                                             n_channels=n_channels, job_id=job_id, verbose=True)
+                                                                             n_channels=n_channels, job_id=job_id, verbose=verbose)
                                                for job_id,(i,j) in enumerate(points))
 
     Kr = np.zeros((n_channels,len(X['root']),len(Y['root'])), dtype=np.float64)  # root kernel
@@ -512,7 +532,7 @@ def intersection_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
 
     return Kr, Ke
 
-def chisquare_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
+def chisquare_kernel(X, Y=None, n_channels=1, nt=-1, verbose=False):
     points = []
 
     X['root'] = [[np.abs(root[i]) for i in xrange(n_channels)] for root in X['root']]
@@ -531,7 +551,7 @@ def chisquare_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
         is_symmetric = False
 
     if verbose:
-        print('Computing fast %dx%d kernel ...\n' % (len(X['root']),len(Y['root'])))
+        print('[chisquare_kernel] Computing fast %dx%d kernel ...\n' % (len(X['root']),len(Y['root'])))
 
     shuffle(points)  # so all threads have similar workload
 
@@ -547,7 +567,7 @@ def chisquare_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
     #     Ke += r[1]
     # ---
     ret = Parallel(n_jobs=nt, backend='threading')(delayed(_chisquare_kernel)(X['root'][i], Y['root'][j], X['nodes'][i], Y['nodes'][j],
-                                                                             n_channels=n_channels, job_id=job_id, verbose=True)
+                                                                             n_channels=n_channels, job_id=job_id, verbose=verbose)
                                                for job_id,(i,j) in enumerate(points))
 
     Kr = np.zeros((n_channels,len(X['root']),len(Y['root'])), dtype=np.float64)  # root kernel
@@ -567,7 +587,7 @@ def chisquare_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
 
     return Kr, Ke
 
-def linear_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
+def linear_kernel(X, Y=None, n_channels=1, nt=-1, verbose=False):
     points = []
 
     if Y is None:
@@ -582,7 +602,7 @@ def linear_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
         is_symmetric = False
 
     if verbose:
-        print('Computing fast %dx%d kernel ...\n' % (len(X['root']),len(Y['root'])))
+        print('[linear_kernel] Computing fast %dx%d kernel ...\n' % (len(X['root']),len(Y['root'])))
 
     shuffle(points)  # so all threads have similar workload
 
@@ -598,7 +618,7 @@ def linear_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
     #     Ke += r[1]
     # ---
     ret = Parallel(n_jobs=nt, backend='threading')(delayed(_linear_kernel)(X['root'][i], Y['root'][j], X['nodes'][i], Y['nodes'][j],
-                                                                             n_channels=n_channels, job_id=job_id, verbose=True)
+                                                                             n_channels=n_channels, job_id=job_id, verbose=verbose)
                                                for job_id,(i,j) in enumerate(points))
 
     Kr = np.zeros((n_channels,len(X['root']),len(Y['root'])), dtype=np.float64)  # root kernel
@@ -619,7 +639,7 @@ def linear_kernel(X, Y=None, n_channels=1, nt=-1, verbose=True):
     return Kr, Ke
 
 
-def _intersection_kernel(input_path, videonames, X, Y, points, tid=None, verbose=True):
+def _intersection_kernel(input_path, videonames, X, Y, points, tid=None, verbose=False):
     """
     Compute the ATEP kernel.
     :param X:
@@ -636,7 +656,7 @@ def _intersection_kernel(input_path, videonames, X, Y, points, tid=None, verbose
     prev_i = -1
     for pid,(i,j) in enumerate(sorted_points):
         if verbose:
-            print('[Parallel intersection kernel] Thread %d, progress = %.1f%%]' % (tid,100.*(pid+1)/len(points)))
+            print('[_intersection_kernel] Thread %d, progress = %.1f%%]' % (tid,100.*(pid+1)/len(points)))
         # i-th tree already loaded, do not reload
         if prev_i < i:
             with open(join(input_path, videonames[i] + '.pkl'), 'rb') as f:
@@ -659,7 +679,7 @@ def _intersection_kernel(input_path, videonames, X, Y, points, tid=None, verbose
 
     return Kr, Kn
 
-def _intersection_kernel_batch(X, Y, points, n_channels=1, job_id=None, verbose=True):
+def _intersection_kernel_batch(X, Y, points, n_channels=1, job_id=None, verbose=False):
     """
     Compute the ATEP kernel.
     :param X:
@@ -681,7 +701,7 @@ def _intersection_kernel_batch(X, Y, points, n_channels=1, job_id=None, verbose=
 
     for pid,(i,j) in enumerate(points):
         if verbose:
-            print('[Parallel intersection kernel] Thread %d, progress = %.1f%%]' % (job_id,100.*(pid+1)/len(points)))
+            print('[_intersection_kernel_batch] Thread %d, progress = %.1f%%]' % (job_id,100.*(pid+1)/len(points)))
 
         for k in xrange(n_channels):
             Kr[k,i,j] = np.minimum(X['root'][i][k], Y['root'][j][k]).sum()  # * p
@@ -698,11 +718,11 @@ def _intersection_kernel_batch(X, Y, points, n_channels=1, job_id=None, verbose=
 
     return Kr, Kn
 
-def _intersection_kernel(Xr, Yr, Xn, Yn, n_channels=1, job_id=None, verbose=True):
+def _intersection_kernel(Xr, Yr, Xn, Yn, n_channels=1, job_id=None, verbose=False):
     K = np.zeros((n_channels,2), dtype=np.float64)
 
     if verbose and (job_id % 10 == 0):
-        print('[Parallel intersection kernel] Job id %d, progress = ?]' % (job_id))
+        print('[_intersection_kernel] Job id %d, progress = ?]' % (job_id))
 
     for k in xrange(n_channels):
         K[k,0] = np.minimum(Xr[k], Yr[k]).sum()  # * p
@@ -719,7 +739,7 @@ def _intersection_kernel(Xr, Yr, Xn, Yn, n_channels=1, job_id=None, verbose=True
     return job_id, K
 
 
-def _chisquare_kernel(Xr, Yr, Xn, Yn, gamma=1.0, n_channels=1, job_id=None, verbose=True):
+def _chisquare_kernel(Xr, Yr, Xn, Yn, gamma=1.0, n_channels=1, job_id=None, verbose=False):
     '''
     Data is assumed to be non-negative and L-normalized
     :param Xr:
@@ -735,7 +755,7 @@ def _chisquare_kernel(Xr, Yr, Xn, Yn, gamma=1.0, n_channels=1, job_id=None, verb
     K = np.zeros((n_channels,2), dtype=np.float64)
 
     if verbose and (job_id % 10 == 0):
-        print('[Parallel chisquare kernel] Job id %d, progress = ?]' % (job_id))
+        print('[_chisquare_kernel] Job id %d, progress = ?]' % (job_id))
 
     for k in xrange(n_channels):
         div = Xr[k] + Yr[k]
@@ -755,7 +775,7 @@ def _chisquare_kernel(Xr, Yr, Xn, Yn, gamma=1.0, n_channels=1, job_id=None, verb
 
     return job_id, K
 
-def _linear_kernel(Xr, Yr, Xn, Yn, n_channels=1, job_id=None, verbose=True):
+def _linear_kernel(Xr, Yr, Xn, Yn, n_channels=1, job_id=None, verbose=False):
     '''
     :param Xr:
     :param Yr:
@@ -770,7 +790,7 @@ def _linear_kernel(Xr, Yr, Xn, Yn, n_channels=1, job_id=None, verbose=True):
     K = np.zeros((n_channels,2), dtype=np.float64)
 
     if verbose and (job_id % 10 == 0):
-        print('[Parallel linear kernel] Job id %d, progress = ?]' % (job_id))
+        print('[_linear_kernel] Job id %d, progress = ?]' % (job_id))
 
     for k in xrange(n_channels):
         K[k,0] = np.dot(Xr[k],Yr[k])

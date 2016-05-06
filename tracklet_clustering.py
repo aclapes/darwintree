@@ -23,27 +23,27 @@ INTERNAL_PARAMETERS = dict(
     tries_per_ridge_value = 3
 )
 
-def cluster(tracklets_path, videonames, clusters_path, visualize=False):
+def cluster(tracklets_path, videonames, clusters_path, verbose=False, visualize=False):
     inds = np.linspace(0, len(videonames)-1, len(videonames))
-    _cluster(tracklets_path, videonames, inds, tracklets_path, visualize)
+    _cluster(tracklets_path, videonames, inds, tracklets_path, verbose=verbose, visualize=visualize)
 
 
-def cluster_multiprocess(tracklets_path, videonames, st, num_videos, clusters_path):
+def cluster_multiprocess(tracklets_path, videonames, st, num_videos, clusters_path, verbose=False):
     inds = np.linspace(st, st+num_videos-1, num_videos)
-    _cluster(tracklets_path, videonames, inds, tracklets_path, visualize=False)
+    _cluster(tracklets_path, videonames, inds, tracklets_path, verbose=verbose, visualize=False)
 
 
-def cluster_multithread(tracklets_path, videonames, clusters_path, nt=4):
-    # inds = np.random.permutation(len(videonames))
-    inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
+def cluster_multithread(tracklets_path, videonames, clusters_path, nt=4, verbose=False):
+    inds = np.random.permutation(len(videonames)).astype('int')
+    # inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
     # step = np.int(np.floor(len(inds)/nt)+1)
     Parallel(n_jobs=nt, backend='threading')(delayed(_cluster)(tracklets_path, videonames, \
                                                                [i], \
-                                                               clusters_path, visualize=False)
+                                                               clusters_path, verbose=verbose, visualize=False)
                                                      for i in inds)
 
 
-def _cluster(tracklets_path, videonames, indices, clusters_path, visualize=False):
+def _cluster(tracklets_path, videonames, indices, clusters_path, verbose=False, visualize=False):
     """
     This function implements the method described in Section 2 ("Clustering dense tracklets")
     of the paper 'Activity representation with motion hierarchies' (IJCV, 2014).
@@ -62,7 +62,8 @@ def _cluster(tracklets_path, videonames, indices, clusters_path, visualize=False
     total = len(videonames)
     for i in indices:
         if isfile(join(clusters_path, videonames[i] + '.pkl')):
-            print('%s -> OK' % videonames[i])
+            if verbose:
+                print('[_cluster] %s -> OK' % videonames[i])
             continue
 
         try:
@@ -136,7 +137,8 @@ def _cluster(tracklets_path, videonames, indices, clusters_path, visualize=False
         tree = reconstruct_tree_from_leafs(np.unique(int_paths))
 
         elapsed_time = time.time() - start_time
-        print('%s -> %s (in %.2f secs)' % (join(clusters_path, videonames[i] + '.pkl'), 'YES' if success else 'NO', elapsed_time))
+        if verbose:
+            print('[_cluster] %s -> %s (in %.2f secs)' % (join(clusters_path, videonames[i] + '.pkl'), 'YES' if success else 'NO', elapsed_time))
 
         with open(join(clusters_path, videonames[i] + '.pkl'), 'wb') as f:
             cPickle.dump({'best_labels' : best_labels, 'int_paths' : int_paths, 'tree' : tree, 'ridge' : ridge}, f)

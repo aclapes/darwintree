@@ -32,27 +32,26 @@ INTERNAL_PARAMETERS = dict(
 )
 
 
-def extract(fullvideonames, videonames, feat_types, tracklets_path):
-    _extract(fullvideonames, videonames, np.arange(len(videonames)), feat_types, tracklets_path)
+def extract(fullvideonames, videonames, feat_types, tracklets_path, verbose=False):
+    _extract(fullvideonames, videonames, np.arange(len(videonames)), feat_types, tracklets_path, verbose=verbose)
 
 
-def extract_multiprocess(fullvideonames, videonames, st, num_videos, feat_types, tracklets_path):
+def extract_multiprocess(fullvideonames, videonames, st, num_videos, feat_types, tracklets_path, verbose=False):
     inds = np.linspace(st, st+num_videos-1, num_videos)
-    _extract(fullvideonames, videonames, inds, feat_types, tracklets_path)
+    _extract(fullvideonames, videonames, inds, feat_types, tracklets_path, verbose=verbose)
 
 
-def extract_multithread(fullvideonames, videonames, feat_types, tracklets_path, nt=4):
+def extract_multithread(fullvideonames, videonames, feat_types, tracklets_path, nt=4, verbose=False):
     # inds = np.random.permutation(len(videonames))
     inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
     # step = np.int(np.floor(len(inds)/nt)+1)
     #inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))],
-    Parallel(n_jobs=nt, backend='threading')(delayed(_extract)(fullvideonames, videonames, \
-                                                               [i], \
-                                                               feat_types, tracklets_path)
+    Parallel(n_jobs=nt, backend='threading')(delayed(_extract)(fullvideonames, videonames, [i], \
+                                                               feat_types, tracklets_path, verbose=verbose)
                                              for i in inds)
 
 
-def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path):
+def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path, verbose=False):
     """
     Extract features using Improved Dense Trajectories by Wang et. al.
     :param fullvideonames:
@@ -88,7 +87,8 @@ def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path):
         all_done = np.all([isfile(join(tracklets_path, feat_t, videonames[i] + '.pkl'))
                            for feat_t in feats_beginend.keys()])
         if all_done:
-            print('%s -> OK' % fullvideonames[i])
+            if verbose:
+                print('[_extract] %s -> OK' % fullvideonames[i])
             continue
 
         start_time = time.time()
@@ -127,7 +127,8 @@ def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path):
                 cPickle.dump(data[:, feats_beginend[feat_t][0]:feats_beginend[feat_t][1]], f)  # TODO: : -> inliners
 
         elapsed_time = time.time() - start_time
-        print('%s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
+        if verbose:
+            print('[_extract] %s -> DONE (in %.2f secs)' % (videonames[i], elapsed_time))
 
 
 # ==============================================================================

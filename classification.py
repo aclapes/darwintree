@@ -32,7 +32,8 @@ rbf_parameters = {'n_estimators': [10,20,30,40],
 #         kernels_train[i]['train']
 
 
-def classify(input_kernels, class_labels, traintest_parts, params, feat_types, strategy='kernel_fusion', C=[1], opt_criterion='acc'):
+def classify(input_kernels, class_labels, traintest_parts, params, feat_types, strategy='kernel_fusion',
+             C=[1], opt_criterion='acc', verbose=False):
     '''
     TODO Fill this.
     :param feats_path:
@@ -54,13 +55,13 @@ def classify(input_kernels, class_labels, traintest_parts, params, feat_types, s
         kernels_test  = input_kernels[k]['test']
         if strategy == 'kernel_fusion':
             results[k] = kernel_fusion_classification(kernels_train, kernels_test, combs, feat_types, class_labels, (train_inds, test_inds), \
-                                                      C=C, opt_criterion=opt_criterion)
+                                                      C=C, opt_criterion=opt_criterion, verbose=verbose)
         elif strategy == 'simple_voting':
             results[k] = simple_voting_classification(kernels_train, kernels_test, params[1], feat_types, class_labels, (train_inds, test_inds), \
-                                                      C=C, opt_criterion=opt_criterion)
+                                                      C=C, opt_criterion=opt_criterion, verbose=verbose)
         elif strategy == 'learning_based_fusion':
             results[k] = learning_based_fusion_classification(kernels_train, kernels_test, params[1], feat_types, class_labels, (train_inds, test_inds), \
-                                                              C=C, opt_criterion=opt_criterion)
+                                                              C=C, opt_criterion=opt_criterion, verbose=verbose)
         else:
             sys.stderr.write('Not a valid classification method.')
             sys.stderr.flush()
@@ -224,7 +225,7 @@ def classify(input_kernels, class_labels, traintest_parts, params, feat_types, s
 
 
 def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_types, class_labels, train_test_idx, \
-                                 C=[1], square_kernels=False, opt_criterion='acc'):
+                                 C=[1], square_kernels=True, opt_criterion='acc', verbose=False):
     '''
 
     :param input_kernels_tr:
