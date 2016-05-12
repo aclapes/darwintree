@@ -31,7 +31,7 @@ import Queue
 # The fixed internal paramaters for clustering
 INTERNAL_PARAMETERS = dict(
     # generic ones
-    min_tube_size=100,   # minimum points per cluster
+    min_tube_size=200,   # minimum points per cluster
     max_tube_size=2000,  # maximum points per cluster
     min_k=2,             # lower limit on number of tubes per video
     # build_sym_geom_adjacency

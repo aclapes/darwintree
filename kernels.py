@@ -5,9 +5,6 @@ import cPickle
 from os.path import join
 from os.path import isfile, exists
 from os import makedirs
-from sklearn import svm
-from sklearn.metrics import average_precision_score
-from sklearn.cross_validation import StratifiedKFold
 import sys
 import itertools
 from joblib import delayed, Parallel
@@ -16,10 +13,10 @@ import time
 from sklearn import preprocessing
 
 import videodarwin
-from tracklet_representation import normalize
+from tracklet_representation import normalize, rootSIFT
 
 def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
-                         kernel_type='linear', norm='l2', power_norm=True, \
+                         kernel_type='hellinger', norm='l2', power_norm=True, \
                          nt=4, use_disk=False, verbose=False):
     """
     Compute All Tree Node Branch Evolution Pairs.
@@ -33,7 +30,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
 
     kernels = []
     for k, part in enumerate(traintest_parts):
-        train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
+        train_inds, test_inds = np.where(np.array(part) <= 0)[0], np.where(np.array(part) > 0)[0]
         kernels_part = dict()
 
         total = len(videonames)
@@ -67,9 +64,9 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                         #     Kr_train, Kn_train = chisquare_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
                     else:
                         D_train = dict()
-                        for i, idx in enumerate(train_inds):
+                        for i, idx in enumerate(train_inds): # TODO: change back to not bounded
                             if verbose:
-                                print('[compute_ATEP_kernels] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
+                                print('[compute_ATEP_kernels] Load train: %s (%d/%d)' % (videonames[idx], i+1, len(train_inds)))
                             try:
                                 with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
                                     d = cPickle.load(f)
@@ -89,6 +86,8 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                             Kr_train, Kn_train = intersection_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
                         elif kernel_type == 'chirbf':
                             Kr_train, Kn_train = chisquare_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
+                        elif kernel_type == 'hellinger':
+                            Kr_train, Kn_train = hellinger_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
                         else:
                             Kr_train, Kn_train = linear_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
                         if verbose:
@@ -113,7 +112,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                             D_train = dict()
                             for i,idx in enumerate(train_inds):
                                 if verbose:
-                                    print('[ATEP kernel computation] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
+                                    print('[ATEP kernel computation] Load train: %s (%d/%d)' % (videonames[idx], i+1, len(train_inds)))
                                 try:
                                     with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
                                         d = cPickle.load(f)
@@ -129,7 +128,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                         D_test = dict()
                         for i,idx in enumerate(test_inds):
                             if verbose:
-                                print('[compute_ATEP_kernels] Load test: %s (%d/%d).' % (videonames[idx], i, len(test_inds)))
+                                print('[compute_ATEP_kernels] Load test: %s (%d/%d)' % (videonames[idx], i+1, len(test_inds)))
                             try:
                                 with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
                                     d = cPickle.load(f)
@@ -150,6 +149,8 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                             Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
                         elif kernel_type == 'chirbf':
                             Kr_test, Kn_test = chisquare_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
+                        elif kernel_type == 'hellinger':
+                            Kr_test, Kn_test = hellinger_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
                         else:
                             Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
                         if verbose:
@@ -170,7 +171,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
 
 
 def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
-                           nt=-1, norm='l2', power_norm=True, use_disk=False, verbose=False):
+                           nt=-1, kernel_type='hellinger', norm='l2', power_norm=True, use_disk=False, verbose=False):
     """
     Compute All Tree Node Branch Evolution Pairs.
     :param feats_path:
@@ -183,14 +184,14 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
 
     kernels = []
     for k, part in enumerate(traintest_parts):
-        train_inds, test_inds = np.where(part <= 0)[0], np.where(part > 0)[0]
+        train_inds, test_inds = np.where(np.array(part) <= 0)[0], np.where(np.array(part) > 0)[0]
         kernels_part = dict()
 
         total = len(videonames)
 
         for feat_t in feat_types:
-            train_filepath = join(kernels_output_path, 'linear' + ('-p-' if power_norm else '-') + feat_t + '-train-' + str(k) + '.pkl')
-            test_filepath = join(kernels_output_path, 'linear' + ('-p-' if power_norm else '-') + feat_t + '-test-' + str(k) + '.pkl')
+            train_filepath = join(kernels_output_path, kernel_type + ('-p-' if power_norm else '-') + feat_t + '-train-' + str(k) + '.pkl')
+            test_filepath = join(kernels_output_path, kernel_type + ('-p-' if power_norm else '-') + feat_t + '-test-' + str(k) + '.pkl')
             if isfile(train_filepath) and isfile(test_filepath):
                 with open(train_filepath, 'rb') as f:
                     data = cPickle.load(f)
@@ -217,7 +218,7 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                         D_train = dict()
                         for i,idx in enumerate(train_inds):
                             if verbose:
-                                print('[compute_ATNBEP_kernels] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
+                                print('[compute_ATNBEP_kernels] Load train: %s (%d/%d)' % (videonames[idx], i+1, len(train_inds)))
                             try:
                                 with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
                                     D_idx = cPickle.load(f)
@@ -232,7 +233,10 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                         st_kernel = time.time()
                         if verbose:
                             print("[compute_ATNBEP_kernels] Compute kernel matrix %s .." % (feat_t))
-                        Kr_train, Kn_train = linear_kernel(D_train, n_channels=2, nt=nt)
+                        if kernel_type == 'hellinger':
+                            Kr_train, Kn_train = hellinger_kernel(D_train, n_channels=2, nt=nt)
+                        else:
+                            Kr_train, Kn_train = linear_kernel(D_train, n_channels=2, nt=nt)
                         if verbose:
                             print("[compute_ATNBEP_kernels] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
@@ -251,7 +255,7 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                             D_train = dict()
                             for i,idx in enumerate(train_inds):
                                 if verbose:
-                                    print('[compute_ATNBEP_kernels] Load train: %s (%d/%d).' % (videonames[idx], i, len(train_inds)))
+                                    print('[compute_ATNBEP_kernels] Load train: %s (%d/%d)' % (videonames[idx], i+1, len(train_inds)))
                                 try:
                                     with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
                                         D_idx = cPickle.load(f)
@@ -266,7 +270,7 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                         D_test = dict()
                         for i,idx in enumerate(test_inds):
                             if verbose:
-                                print('[compute_ATNBEP_kernels] Load test: %s (%d/%d).' % (videonames[idx], i, len(test_inds)))
+                                print('[compute_ATNBEP_kernels] Load test: %s (%d/%d)' % (videonames[idx], i+1, len(test_inds)))
                             try:
                                 with open(join(kernel_repr_path, videonames[idx] + '.pkl'), 'rb') as f:
                                     D_idx = cPickle.load(f)
@@ -281,7 +285,10 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
                         st_kernel = time.time()
                         if verbose:
                             print("[compute_ATNBEP_kernels] Compute kernel matrix %s .." % (feat_t))
-                        Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
+                        if kernel_type == 'hellinger':
+                            Kr_test, Kn_test = hellinger_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
+                        else:
+                            Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=2, nt=nt)
                         if verbose:
                             print("[compute_ATNBEP_kernels] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
 
@@ -297,6 +304,316 @@ def compute_ATNBEP_kernels(feats_path, videonames, traintest_parts, feat_types, 
             kernels_part['train'][feat_t]['nodes'] = (Kn_train[0],Kn_train[1])
             kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = (Kr_test[0],Kr_test[0])
             kernels_part['test'][feat_t]['nodes'] = (Kn_test[0],Kn_test[1])
+
+        kernels.append(kernels_part)
+
+    return kernels
+
+
+def compute_ACP_kernels(feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
+                         kernel_type='hellinger', norm='l2', power_norm=True, \
+                         nt=4, use_disk=False, verbose=False):
+    """
+    Compute All Cluster Pairs.
+    :param feats_path:
+    :param videonames:
+    :param traintest_parts:
+    :param feat_types:
+    :param nt:
+    :return:
+    """
+
+    kernels = []
+    for k, part in enumerate(traintest_parts):
+        train_inds, test_inds = np.where(np.array(part) <= 0)[0], np.where(np.array(part) > 0)[0]
+        kernels_part = dict()
+
+        total = len(videonames)
+
+        for feat_t in feat_types:
+            train_filepath = join(kernels_output_path, kernel_type + ('-p-' if power_norm else '-') + feat_t + '-train-' + str(k) + '.pkl')
+            test_filepath  = join(kernels_output_path, kernel_type + ('-p-' if power_norm else '-') + feat_t + '-test-'  + str(k) + '.pkl')
+            if isfile(train_filepath) and isfile(test_filepath):
+                with open(train_filepath, 'rb') as f:
+                    data = cPickle.load(f)
+                    Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
+
+                with open(test_filepath, 'rb') as f:
+                    data = cPickle.load(f)
+                    Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
+            else:
+                if not exists(kernels_output_path):
+                    makedirs(kernels_output_path)
+
+                # load data and compute kernels
+                try:
+                    with open(train_filepath, 'rb') as f:
+                        data = cPickle.load(f)
+                        Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
+                except IOError:
+                    if use_disk:
+                        quit()
+                        # if kernel_type == 'linear':
+                        #     Kr_train, Kn_train = linear_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
+                        # elif kernel_type == 'chirbf':
+                        #     Kr_train, Kn_train = chisquare_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
+                    else:
+                        D_train = dict()
+                        for i, idx in enumerate(train_inds): # TODO: change back to not bounded
+                            if verbose:
+                                print('[compute_ACP_kernels] Load train: %s (%d/%d)' % (videonames[idx], i+1, len(train_inds)))
+                            try:
+                                with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
+                                    d = cPickle.load(f)
+                            except IOError:
+                                sys.stderr.write('[Error] Feats file not found: %s.\n' % (join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl')))
+                                sys.stderr.flush()
+                                quit()
+
+                            root, nodes = _construct_clusters(d, norm=norm, power_norm=power_norm)
+                            D_train.setdefault('root',[]).append(root)
+                            D_train.setdefault('nodes',[]).append(nodes)
+
+                        st_kernel = time.time()
+                        if verbose:
+                            print("[compute_ACP_kernels] Compute kernel matrix %s .." % (feat_t))
+                        if kernel_type == 'intersection':
+                            Kr_train, Kn_train = intersection_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
+                        elif kernel_type == 'chirbf':
+                            Kr_train, Kn_train = chisquare_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
+                        elif kernel_type == 'hellinger':
+                            Kr_train, Kn_train = hellinger_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
+                        else:
+                            Kr_train, Kn_train = linear_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
+                        if verbose:
+                            print("[compute_ACP_kernels] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+
+                    with open(train_filepath, 'wb') as f:
+                        cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
+
+                try:
+                    with open(test_filepath, 'rb') as f:
+                        data = cPickle.load(f)
+                        Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
+                except IOError:
+                    if use_disk:
+                        quit()
+                        # if kernel_type == 'linear':
+                        #     Kr_test, Kn_test = linear_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                        # elif kernel_type == 'chirbf':
+                        #     Kr_test, Kn_test = chisquare_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                    else:
+                        if not 'D_train' in locals():
+                            D_train = dict()
+                            for i,idx in enumerate(train_inds):
+                                if verbose:
+                                    print('[ACP kernel computation] Load train: %s (%d/%d)' % (videonames[idx], i+1, len(train_inds)))
+                                try:
+                                    with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
+                                        d = cPickle.load(f)
+                                except IOError:
+                                    sys.stderr.write('[Error] Feats file not found: %s.\n' % (join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl')))
+                                    sys.stderr.flush()
+                                    quit()
+
+                                root, nodes = _construct_clusters(d, norm=norm, power_norm=power_norm)
+                                D_train.setdefault('root',[]).append(root)
+                                D_train.setdefault('nodes',[]).append(nodes)
+
+                        D_test = dict()
+                        for i,idx in enumerate(test_inds):
+                            if verbose:
+                                print('[compute_ACP_kernels] Load test: %s (%d/%d)' % (videonames[idx], i+1, len(test_inds)))
+                            try:
+                                with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
+                                    d = cPickle.load(f)
+                            except IOError:
+                                sys.stderr.write('[Error] Feats file not found: %s.\n' % (join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl')))
+                                sys.stderr.flush()
+                                quit()
+
+                            root, nodes = _construct_clusters(d, norm=norm, power_norm=power_norm)
+                            D_test.setdefault('root',[]).append(root)
+                            D_test.setdefault('nodes',[]).append(nodes)
+
+                        st_kernel = time.time()
+
+                        if verbose:
+                            print("[compute_ACP_kernels] Compute kernel matrix %s .." % (feat_t))
+                        if kernel_type == 'intersection':
+                            Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
+                        elif kernel_type == 'chirbf':
+                            Kr_test, Kn_test = chisquare_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
+                        elif kernel_type == 'hellinger':
+                            Kr_test, Kn_test = hellinger_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
+                        else:
+                            Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
+                        if verbose:
+                            print("[compute_ACP_kernels] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+
+                    with open(test_filepath, 'wb') as f:
+                        cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
+
+            # Use also the parent
+            kernels_part.setdefault('train',{}).setdefault(feat_t,{})['root'] = (Kr_train[0],)
+            kernels_part['train'][feat_t]['nodes'] = (Kn_train[0],)
+            kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = (Kr_test[0],)
+            kernels_part['test'][feat_t]['nodes'] = (Kn_test[0],)
+
+        kernels.append(kernels_part)
+
+    return kernels
+
+
+def compute_ATLP_kernels(feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
+                         kernel_type='hellinger', norm='l2', power_norm=True, \
+                         nt=4, use_disk=False, verbose=False):
+    """
+    Compute All Cluster Pairs.
+    :param feats_path:
+    :param videonames:
+    :param traintest_parts:
+    :param feat_types:
+    :param nt:
+    :return:
+    """
+
+    kernels = []
+    for k, part in enumerate(traintest_parts):
+        train_inds, test_inds = np.where(np.array(part) <= 0)[0], np.where(np.array(part) > 0)[0]
+        kernels_part = dict()
+
+        total = len(videonames)
+
+        for feat_t in feat_types:
+            train_filepath = join(kernels_output_path, kernel_type + ('-p-' if power_norm else '-') + feat_t + '-train-' + str(k) + '.pkl')
+            test_filepath  = join(kernels_output_path, kernel_type + ('-p-' if power_norm else '-') + feat_t + '-test-'  + str(k) + '.pkl')
+            if isfile(train_filepath) and isfile(test_filepath):
+                with open(train_filepath, 'rb') as f:
+                    data = cPickle.load(f)
+                    Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
+
+                with open(test_filepath, 'rb') as f:
+                    data = cPickle.load(f)
+                    Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
+            else:
+                if not exists(kernels_output_path):
+                    makedirs(kernels_output_path)
+
+                # load data and compute kernels
+                try:
+                    with open(train_filepath, 'rb') as f:
+                        data = cPickle.load(f)
+                        Kr_train, Kn_train = data['Kr_train'], data['Kn_train']
+                except IOError:
+                    if use_disk:
+                        quit()
+                        # if kernel_type == 'linear':
+                        #     Kr_train, Kn_train = linear_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
+                        # elif kernel_type == 'chirbf':
+                        #     Kr_train, Kn_train = chisquare_kernel(kernel_repr_path, videonames, train_inds, nt=nt)
+                    else:
+                        D_train = dict()
+                        for i, idx in enumerate(train_inds): # TODO: change back to not bounded
+                            if verbose:
+                                print('[compute_ATLP_kernels] Load train: %s (%d/%d)' % (videonames[idx], i+1, len(train_inds)))
+                            try:
+                                with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
+                                    d = cPickle.load(f)
+                            except IOError:
+                                sys.stderr.write('[Error] Feats file not found: %s.\n' % (join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl')))
+                                sys.stderr.flush()
+                                quit()
+
+                            root, nodes = _construct_level_evolutions(d, norm=norm, power_norm=power_norm)
+                            D_train.setdefault('root',[]).append(root)
+                            D_train.setdefault('nodes',[]).append(nodes)
+
+                        st_kernel = time.time()
+                        if verbose:
+                            print("[compute_ATLP_kernels] Compute kernel matrix %s .." % (feat_t))
+                        if kernel_type == 'intersection':
+                            Kr_train, Kn_train = intersection_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
+                        elif kernel_type == 'chirbf':
+                            Kr_train, Kn_train = chisquare_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
+                        elif kernel_type == 'hellinger':
+                            Kr_train, Kn_train = hellinger_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
+                        else:
+                            Kr_train, Kn_train = linear_kernel(D_train, n_channels=1, nt=nt, verbose=verbose)
+                        if verbose:
+                            print("[compute_ATLP_kernels] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+
+                    with open(train_filepath, 'wb') as f:
+                        cPickle.dump(dict(Kr_train=Kr_train, Kn_train=Kn_train), f)
+
+                try:
+                    with open(test_filepath, 'rb') as f:
+                        data = cPickle.load(f)
+                        Kr_test, Kn_test = data['Kr_test'], data['Kn_test']
+                except IOError:
+                    if use_disk:
+                        quit()
+                        # if kernel_type == 'linear':
+                        #     Kr_test, Kn_test = linear_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                        # elif kernel_type == 'chirbf':
+                        #     Kr_test, Kn_test = chisquare_kernel(kernel_repr_path, videonames, test_inds, Y=train_inds, nt=nt)
+                    else:
+                        if not 'D_train' in locals():
+                            D_train = dict()
+                            for i,idx in enumerate(train_inds):
+                                if verbose:
+                                    print('[ATLP kernel computation] Load train: %s (%d/%d)' % (videonames[idx], i+1, len(train_inds)))
+                                try:
+                                    with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
+                                        d = cPickle.load(f)
+                                except IOError:
+                                    sys.stderr.write('[Error] Feats file not found: %s.\n' % (join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl')))
+                                    sys.stderr.flush()
+                                    quit()
+
+                                root, nodes = _construct_level_evolutions(d, norm=norm, power_norm=power_norm)
+                                D_train.setdefault('root',[]).append(root)
+                                D_train.setdefault('nodes',[]).append(nodes)
+
+                        D_test = dict()
+                        for i,idx in enumerate(test_inds):
+                            if verbose:
+                                print('[compute_ATLP_kernels] Load test: %s (%d/%d)' % (videonames[idx], i+1, len(test_inds)))
+                            try:
+                                with open(join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl'), 'rb') as f:
+                                    d = cPickle.load(f)
+                            except IOError:
+                                sys.stderr.write('[Error] Feats file not found: %s.\n' % (join(feats_path, feat_t + '-' + str(k), videonames[idx] + '.pkl')))
+                                sys.stderr.flush()
+                                quit()
+
+                            root, nodes = _construct_level_evolutions(d, norm=norm, power_norm=power_norm)
+                            D_test.setdefault('root',[]).append(root)
+                            D_test.setdefault('nodes',[]).append(nodes)
+
+                        st_kernel = time.time()
+
+                        if verbose:
+                            print("[compute_ATLP_kernels] Compute kernel matrix %s .." % (feat_t))
+                        if kernel_type == 'intersection':
+                            Kr_test, Kn_test = intersection_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
+                        elif kernel_type == 'chirbf':
+                            Kr_test, Kn_test = chisquare_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
+                        elif kernel_type == 'hellinger':
+                            Kr_test, Kn_test = hellinger_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
+                        else:
+                            Kr_test, Kn_test = linear_kernel(D_test, Y=D_train, n_channels=1, nt=nt, verbose=verbose)
+                        if verbose:
+                            print("[compute_ATLP_kernels] %s took %2.2f secs." % (feat_t, time.time()-st_kernel))
+
+                    with open(test_filepath, 'wb') as f:
+                        cPickle.dump(dict(Kr_test=Kr_test, Kn_test=Kn_test), f)
+
+            # Use also the parent
+            kernels_part.setdefault('train',{}).setdefault(feat_t,{})['root'] = (Kr_train[0],)
+            kernels_part['train'][feat_t]['nodes'] = (Kn_train[0],)
+            kernels_part.setdefault('test',{}).setdefault(feat_t,{})['root'] = (Kr_test[0],)
+            kernels_part['test'][feat_t]['nodes'] = (Kn_test[0],)
 
         kernels.append(kernels_part)
 
@@ -349,18 +666,11 @@ def _construct_edge_pairs(data, norm='l2', power_norm=True, dtype=np.float32):
                 e = np.sign(e) * np.sqrt(np.abs(e))
             e = preprocessing.normalize(e[np.newaxis,:], norm=norm)
 
-            # if power_norm:
-            #     x_left = np.sign(x_left) * np.sqrt(np.abs(x_left))
-            #     x_right = np.sign(x_right) * np.sqrt(np.abs(x_right))
-            #
-            # e = (preprocessing.normalize(x_left[np.newaxis,:], norm=norm), preprocessing.normalize(x_right[np.newaxis,:], norm=norm) )
-            e = np.hstack(e)
-
             edges.append([np.squeeze(e),])
 
     return root, edges
 
-def construct_clusters(feat_repr_filepath, output_filepath, norm='l2', power_norm=True, ):
+def construct_clusters(feat_repr_filepath, output_filepath, norm='l2', power_norm=True):
     if not exists(output_filepath):
         try:
             print feat_repr_filepath
@@ -387,7 +697,7 @@ def _construct_clusters(data, norm='l2', power_norm=True, dtype=np.float32):
     r = data['tree'][1].astype(dtype=dtype)
     if power_norm:
         r = np.sign(r) * np.sqrt(np.abs(r))
-    r = preprocessing.normalize(r, norm=norm)
+    r = preprocessing.normalize(r[np.newaxis,:], norm=norm)
     root = [np.squeeze(r), ]
 
     clusters = []
@@ -396,7 +706,7 @@ def _construct_clusters(data, norm='l2', power_norm=True, dtype=np.float32):
             c = data['tree'][id].astype('float32')
             if power_norm:
                 c = np.sign(c) * np.sqrt(np.abs(c))
-            c = preprocessing.normalize(c,norm=norm)
+            c = preprocessing.normalize(c[np.newaxis,:],norm=norm)
 
             clusters.append([np.squeeze(c),])
 
@@ -421,7 +731,7 @@ def construct_branch_evolutions(input_filepath, output_filepath):
 
     return
 
-def _construct_branch_evolutions(data, dtype=np.float32):
+def _construct_branch_evolutions(data, power_norm=False, dtype=np.float32):
     root = [np.array([0],dtype=dtype), np.array([0],dtype=dtype)]
 
     branches = []
@@ -435,9 +745,39 @@ def _construct_branch_evolutions(data, dtype=np.float32):
                 id_j /= 2
 
             w_fw, w_rv = videodarwin._darwin(np.array(X))
+
+            if power_norm:
+                w_fw = rootSIFT(w_fw)
+                w_rv = rootSIFT(w_rv)
+
             branches.append( [normalize(w_fw), normalize(w_rv)] )
 
     return root, branches
+
+def _construct_level_evolutions(data, norm='l2', power_norm=True, dtype=np.float32):
+    root = [np.array([0],dtype=dtype), np.array([0],dtype=dtype)]
+
+    max_lvl = int(np.log2(np.max(data['tree'].keys())))
+
+    L = {}
+    for key in data['tree'].keys():
+        if key > 1:
+            L.setdefault(int(np.log2(key)),[]).append(key)
+            k = key
+            while 2*k not in data['tree'] and int(np.log2(k)) < max_lvl:
+                L.setdefault(int(np.log2(k))+1,[]).append(key)
+                k *= 2
+
+    levels = []
+    for i,list in L.iteritems():
+        X = [data['tree'][k] for k in sorted(list, key=lambda x: bin(x))]
+        w = videodarwin.darwin(np.array(X))
+        if power_norm:
+            w = rootSIFT(w)
+        w = preprocessing.normalize(w[np.newaxis,:], norm=norm)
+        levels.append([np.squeeze(w),])
+
+    return root, levels
 
 
 def intersection_kernel(input_path, videonames, X, Y=None, n_channels=1, nt=1, verbose=False):
@@ -586,6 +926,95 @@ def chisquare_kernel(X, Y=None, n_channels=1, nt=-1, verbose=False):
             Ke[i] += np.triu(Ke[i],1).T
 
     return Kr, Ke
+
+def hellinger_kernel(X, Y=None, n_channels=1, nt=-1, verbose=False):
+    points = []
+
+    # X['root'] = [[(root[i].clip(min=0),np.abs(root[i].clip(max=0)))
+    #               for i in xrange(n_channels)] for root in X['root']]
+    # X['nodes'] = [[[(node[i].clip(min=0),np.abs(node[i].clip(max=0)))
+    #                 for i in xrange(n_channels)]
+    #                for node in tree]
+    #               for tree in X['nodes']]
+    # X['root'] = [[np.sign(np.abs(root[i])) * np.sqrt(np.abs(root[i]))
+    #               for i in xrange(n_channels)] for root in X['root']]
+    # X['nodes'] = [[[np.sign(np.abs(node[i])) * np.sqrt(np.abs(node[i]))
+    #                 for i in xrange(n_channels)]
+    #                for node in tree]
+    #               for tree in X['nodes']]
+    if Y is None:
+        # generate combinations
+        points += [(i,i) for i in xrange(len(X['root']))]  # diagonal
+        points += [p for p in itertools.combinations(np.arange(len(X['root'])),2)]  # upper-triangle combinations
+        is_symmetric = True
+        Y = X
+    else:
+        # try:
+        #     Y['root'] = [[(root[i].clip(min=0),np.abs(root[i].clip(max=0)))
+        #                   for i in xrange(n_channels)]
+        #                  for root in Y['root']]
+        #     Y['nodes'] = [[[(node[i].clip(min=0),np.abs(node[i].clip(max=0)))
+        #                     for i in xrange(n_channels)]
+        #                    for node in tree]
+        #                   for tree in Y['nodes']]
+        # except AttributeError:
+        #     sys.stderr.write('[Warning] Y data already clipped')
+        #     sys.stderr.flush()
+
+        # Y['root'] = [[np.sign(np.abs(root[i])) * np.sqrt(np.abs(root[i]))
+        #               for i in xrange(n_channels)]
+        #              for root in Y['root']]
+        # Y['nodes'] = [[[np.sign(np.abs(node[i])) * np.sqrt(np.abs(node[i]))
+        #                 for i in xrange(n_channels)]
+        #                for node in tree]
+        #               for tree in Y['nodes']]
+        # generate product
+        points += [ p for p in itertools.product(*[np.arange(len(X['root'])),np.arange(len(Y['root']))]) ]
+        is_symmetric = False
+
+    if verbose:
+        print('[hellinger_kernel] Computing fast %dx%d kernel ...\n' % (len(X['root']),len(Y['root'])))
+
+    shuffle(points)  # so all threads have similar workload
+
+    step = np.int(np.floor(len(points)/nt)+1)
+    # ---
+    # ret = Parallel(n_jobs=nt, backend='threading')(delayed(_intersection_kernel_batch)(X, Y, points[i*step:((i+1)*step if (i+1)*step < len(points) else len(points))],
+    #                                                                              n_channels=n_channels, job_id=i, verbose=True)
+    #                                                for i in xrange(nt))
+    # # aggregate results of parallel computations
+    # Kr, Ke = ret[0][0], ret[0][1]
+    # for r in ret[1:]:
+    #     Kr += r[0]
+    #     Ke += r[1]
+    # ---
+    ret = Parallel(n_jobs=nt, backend='threading')(delayed(_linear_kernel)(X['root'][i], Y['root'][j], X['nodes'][i], Y['nodes'][j],
+                                                                             n_channels=n_channels, job_id=job_id, verbose=verbose)
+                                               for job_id,(i,j) in enumerate(points))
+    # ret = Parallel(n_jobs=nt, backend='threading')(delayed(_linear_kernel)(X['root'][i], Y['root'][j], X['nodes'][i], Y['nodes'][j],
+    #                                                                          n_channels=n_channels, job_id=job_id, verbose=verbose)
+    #                                            for job_id,(i,j) in enumerate(points))
+
+    Kr = np.zeros((n_channels,len(X['root']),len(Y['root'])), dtype=np.float64)  # root kernel
+    Ke = Kr.copy()
+    # aggregate results of parallel computations
+    for job_id, res in ret:
+        i,j = points[job_id]
+        for c in xrange(n_channels):
+            Kr[c,i,j], Ke[c,i,j] = res[c,0], res[c,1]
+    # ---
+
+    # if symmetric, replicate upper to lower triangle matrix
+    if is_symmetric:
+        for i in xrange(n_channels):
+            Kr[i] += np.triu(Kr[i],1).T
+            Ke[i] += np.triu(Ke[i],1).T
+
+    Kr = np.sqrt(Kr.clip(min=0))
+    Ke = np.sqrt(Ke.clip(min=0))
+
+    return Kr, Ke
+
 
 def linear_kernel(X, Y=None, n_channels=1, nt=-1, verbose=False):
     points = []
@@ -774,6 +1203,38 @@ def _chisquare_kernel(Xr, Yr, Xn, Yn, gamma=1.0, n_channels=1, job_id=None, verb
         K[k,1] /= (len(Xn) * len(Yn))
 
     return job_id, K
+
+def _hellinger_kernel(Xr, Yr, Xn, Yn, n_channels=1, job_id=None, verbose=False):
+    '''
+    :param Xr:
+    :param Yr:
+    :param Xn:
+    :param Yn:
+    :param gamma:
+    :param n_channels:
+    :param job_id:
+    :param verbose:
+    :return:
+    '''
+    K = np.zeros((n_channels,2), dtype=np.float64)
+
+    if verbose and (job_id % 10 == 0):
+        print('[_hellinger_kernel] Job id %d, progress = ?]' % (job_id))
+
+    for k in xrange(n_channels):
+        K[k,0] = np.sqrt(np.dot(Xr[k][0],Yr[k][0]) + np.dot(Xr[k][1],Yr[k][1]))
+
+    # pair-wise intersection of edges' histograms
+    for node_i in xrange(len(Xn)):
+        for node_j in xrange(len(Yn)):
+            for k in xrange(n_channels):
+                K[k,1] += np.sqrt(np.dot(Xn[node_i][k][0], Yn[node_j][k][0]) + np.dot(Xn[node_i][k][1], Yn[node_j][k][1]))
+
+    for k in xrange(n_channels):
+        K[k,1] /= (len(Xn) * len(Yn))
+
+    return job_id, K
+
 
 def _linear_kernel(Xr, Yr, Xn, Yn, n_channels=1, job_id=None, verbose=False):
     '''

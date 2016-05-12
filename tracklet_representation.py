@@ -123,7 +123,7 @@ def _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, tr
             if cache is None:
                 cache = dict()
                 for j, feat_t in enumerate(feat_types):
-                    with open(join(intermediates_path, 'bovw' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl'), 'rb') as f:
+                    with open(join(intermediates_path, 'bovw' + ('-' if pca_reduction else '-nopca-') + feat_t + '-' + str(k) + '.pkl'), 'rb') as f:
                         cache[feat_t] = cPickle.load(f)
 
             start_time = time.time()
@@ -211,7 +211,7 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
             if cache is None:
                 cache = dict()
                 for j, feat_t in enumerate(feat_types):
-                    with open(join(intermediates_path, 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl'), 'rb') as f:
+                    with open(join(intermediates_path, 'gmm' + ('-' if pca_reduction else '-nopca-') + feat_t + '-' + str(k) + '.pkl'), 'rb') as f:
                         cache[feat_t] = cPickle.load(f)
 
             start_time = time.time()
@@ -305,7 +305,7 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
             if cache is None:
                 cache = dict()
                 for j, feat_t in enumerate(feat_types):
-                    with open(join(intermediates_path, 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl'), 'rb') as f:
+                    with open(join(intermediates_path, 'gmm' + ('-' if pca_reduction else '-nopca-') + feat_t + '-' + str(k) + '.pkl'), 'rb') as f:
                         cache[feat_t] = cPickle.load(f)
 
             start_time = time.time()
@@ -334,7 +334,8 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                 else:
                     d = preprocessing.normalize(d, norm='l1', axis=1)
 
-                d = rootSIFT(d)
+                if feat_t != 'trj':
+                    d = rootSIFT(d)
 
                 if pca_reduction:
                     d = cache[feat_t]['pca'].transform(d)  # reduce dimensionality
@@ -457,7 +458,7 @@ def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, inter
             D = None
 
             # Train GMMs
-            output_filepath = join(intermediates_path, 'gmm' + ('_pca-' if pca_reduction else '-') + feat_t + '-' + str(k) + '.pkl')
+            output_filepath = join(intermediates_path, 'gmm' + ('-' if pca_reduction else '-nopca-') + feat_t + '-' + str(k) + '.pkl')
             if isfile(output_filepath):
                 if verbose:
                     print('[train_fv_gmms] %s -> OK' % output_filepath)
@@ -488,7 +489,7 @@ def train_fv_gmms(tracklets_path, videonames, traintest_parts, feat_types, inter
 
             # train GMMs for later FV computation
             D = np.ascontiguousarray(D, dtype=np.float32)
-            gmm = ynumpy.gmm_learn(D, INTERNAL_PARAMETERS['fv_gmm_k'], nt=nt, niter=500, redo=1, verbose=verbose)
+            gmm = ynumpy.gmm_learn(D, INTERNAL_PARAMETERS['fv_gmm_k'], nt=nt, niter=500, redo=1)
 
             with open(output_filepath, 'wb') as f:
                 cPickle.dump(dict(pca=(pca if pca_reduction else None), gmm=gmm), f)

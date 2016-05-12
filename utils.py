@@ -174,15 +174,15 @@ def sum_of_arrays(arrays, weights=None, norm=None):
 #
 #     return K, p
 
-def normalize(K, type='median'):
+def normalize(K, type='mean'):
     p = argnormalize(K, type=type)
     return p * K
 
-def normalization(K, type='median'):
+def normalization(K, type='mean'):
     p = argnormalize(K, type=type)
     return p * K, p
 
-def argnormalize(K,type='median'):
+def argnormalize(K,type='mean'):
     p = 1.0
 
     values = K[K != 0]

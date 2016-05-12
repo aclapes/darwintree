@@ -12,6 +12,7 @@ from spectral_division import build_geom_neighbor_graph
 import pyflann
 from joblib import delayed, Parallel
 import sys
+import warnings
 
 # some hard-coded constants
 FEATURE_EXTRACTOR_RELPATH = 'release/'
@@ -33,25 +34,25 @@ INTERNAL_PARAMETERS = dict(
 
 
 def extract(fullvideonames, videonames, feat_types, tracklets_path, verbose=False):
-    _extract(fullvideonames, videonames, np.arange(len(videonames)), feat_types, tracklets_path, verbose=verbose)
+    _extract(fullvideonames, videonames, np.arange(len(videonames)), feat_types, traj_length, tracklets_path, verbose=verbose)
 
 
 def extract_multiprocess(fullvideonames, videonames, st, num_videos, feat_types, tracklets_path, verbose=False):
     inds = np.linspace(st, st+num_videos-1, num_videos)
-    _extract(fullvideonames, videonames, inds, feat_types, tracklets_path, verbose=verbose)
+    _extract(fullvideonames, videonames, inds, feat_types, traj_length, tracklets_path, verbose=verbose)
 
 
-def extract_multithread(fullvideonames, videonames, feat_types, tracklets_path, nt=4, verbose=False):
-    # inds = np.random.permutation(len(videonames))
-    inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
+def extract_multithread(fullvideonames, videonames, feat_types, traj_length, tracklets_path, nt=4, verbose=False):
+    inds = np.random.permutation(len(videonames)).astype('int')
+    # inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
     # step = np.int(np.floor(len(inds)/nt)+1)
     #inds[i*step:((i+1)*step if (i+1)*step < len(inds) else len(inds))],
     Parallel(n_jobs=nt, backend='threading')(delayed(_extract)(fullvideonames, videonames, [i], \
-                                                               feat_types, tracklets_path, verbose=verbose)
+                                                               feat_types, traj_length, tracklets_path, verbose=verbose)
                                              for i in inds)
 
 
-def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path, verbose=False):
+def _extract(fullvideonames, videonames, indices, feat_types, traj_length, tracklets_path, verbose=False):
     """
     Extract features using Improved Dense Trajectories by Wang et. al.
     :param fullvideonames:
@@ -61,7 +62,7 @@ def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path, ve
     :param tracklets_path:
     :return:
     """
-    feats_beginend = get_features_beginend(INTERNAL_PARAMETERS['feats_dict'], INTERNAL_PARAMETERS['L'])
+    feats_beginend = get_features_beginend(INTERNAL_PARAMETERS['feats_dict'], traj_length)
 
     # prepare output directories
 
@@ -95,7 +96,7 @@ def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path, ve
         # extract the features into temporary file
         tracklets_filepath = join(tracklets_path, 'tmp/', videonames[i] + '.dat')
         if not isfile(tracklets_filepath):
-            extract_wang_features(fullvideonames[i], INTERNAL_PARAMETERS['L'], tracklets_filepath)
+            extract_wang_features(fullvideonames[i], tracklets_filepath, traj_length=traj_length)
 
         # read the temporary file to numpy array
         finput = fileinput.FileInput(tracklets_filepath)
@@ -109,17 +110,21 @@ def _extract(fullvideonames, videonames, indices, feat_types, tracklets_path, ve
             data = np.vstack(data)
         except ValueError:
             # empty row
-            sys.stderr.write("[Error] Reading tracklets file: " + tracklets_filepath + '\n')
+            sys.stderr.write("[_extract] Error reading tracklets file: " + tracklets_filepath + '\n')
             sys.stderr.flush()
             continue
 
         # filter low density tracklets
-        try:
-            inliers = filter_low_density(data)
-        except:
-            sys.stderr.write("[Error] Filtering low density: " + tracklets_filepath + '\n')
-            sys.stderr.flush()
-            continue
+        with warnings.catch_warnings():
+            warnings.filterwarnings('error')
+            try:
+                inliers = filter_low_density(data)
+                if len(inliers) == 0:
+                    raise RuntimeWarning
+            except RuntimeWarning:
+                sys.stderr.write('[_extract] Runtime warning in: %s\n' % (videonames[i]))
+                sys.stderr.flush()
+                continue
 
         # store feature types separately
         for feat_t in feats_beginend.keys():
@@ -150,7 +155,7 @@ def get_features_beginend(feats_dict, L):
     return feats_beginend
 
 # Version using precomputed optical flow (stored in .flo files)
-def extract_wang_features(videofile_path, traj_length, output_features_path):
+def extract_wang_features(videofile_path, output_features_path, traj_length=15):
     ''' Use external program (DenseTrack) to extract the features '''
     argsArray = ['./DenseTrackStab', videofile_path, \
                  '-L', str(traj_length)]  # DenseTrackStab is not accepting parameters, hardcoded the L in there
@@ -176,7 +181,7 @@ def filter_low_density(data, k=30, r=5):
 
     all_sparsities = np.zeros((P.shape[0],k), dtype=np.float32)
     subset_indices = []  # optimization. see (*) below
-    for i in range(0, P.shape[0]):
+    for i in range(0, 20):  # TODO: change 20 back to "P.shape[0]"
         new_subset_indices = np.where((data[:,0] >= data[i,0] - r) & (data[:,0] <= data[i,0] + r))[0]
         if len(new_subset_indices) == 1:
             all_sparsities[i,:] = np.nan
@@ -199,5 +204,6 @@ def filter_low_density(data, k=30, r=5):
     mean_sparsity = np.nanmean(all_sparsities)
     stddev_sparsity = np.nanstd(all_sparsities)
     inliers = np.where(local_sparsities <= (mean_sparsity + stddev_sparsity))[0]
+
 
     return inliers

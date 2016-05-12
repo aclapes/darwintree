@@ -62,7 +62,7 @@ def get_dataset_info(parent_path, dataset_name):
     """
     parent_path = join(parent_path, dataset_name)
 
-    if dataset_name == 'hollywood2':
+    if dataset_name == 'Hollywood2':
         dataset_info = get_hollywood2_config(parent_path)
     elif dataset_name == 'highfive':
         dataset_info = get_highfive_config(parent_path)
@@ -92,19 +92,21 @@ def get_hollywood2_config(parent_path):
     split_file_path = join(parent_path, 'train_test_split.mat')
 
     tmp_dict = loadmat(split_file_path)
-    fullvideonames = np.array([join(videos_dir, str(element[0][0])) for element in tmp_dict['fnames']])
+    fullvideonames = np.array([join(videos_dir, str(element[0][0] + '.avi')) for element in tmp_dict['fnames']])
     videonames = np.array([str(element[0][0]) for element in tmp_dict['fnames']])
 
     class_labels = tmp_dict['labels2']
 
     cur_train_indx = np.squeeze(tmp_dict['cur_train_indx'][0][0])
     cur_test_indx = np.squeeze(tmp_dict['cur_test_indx'][0][0])
-    train_test_indx = (cur_train_indx-1, cur_test_indx-1)  # was MATLAB's indexing
+    part = np.zeros((len(fullvideonames),), dtype=np.int32)
+    part[cur_test_indx-1] = 1  # was MATLAB's indexing
 
     action_names = ['AnswerPhone','DriveCar','Eat','FightPerson','GetOutCar', \
                     'HandShake','HugPerson','Kiss','Run','SitDown','SitUp','StandUp']
 
-    return fullvideonames, videonames, class_labels, action_names, train_test_indx, 'map'
+    traintes_parts = [part]
+    return fullvideonames, videonames, class_labels, action_names, traintes_parts, 'map', 15
 
 
 def get_highfive_config(parent_path):
@@ -165,7 +167,7 @@ def get_highfive_config(parent_path):
 
     class_labels = class_labels[:,np.where(np.array(action_names) != 'negative')[0]]
 
-    return fullvideonames, videonames, class_labels, action_names, traintest_parts, 'map'
+    return fullvideonames, videonames, class_labels, action_names, traintest_parts, 'map', 15
 
 
 def get_ucfsportsaction_dataset(parent_path):
@@ -233,7 +235,7 @@ def get_ucfsportsaction_dataset(parent_path):
 
     # train_test_indx = (np.array(train_inds) - 1, np.array(test_inds) - 1)
 
-    return fullvideonames, videonames, class_labels, action_names, traintest_parts, 'acc'
+    return fullvideonames, videonames, class_labels, action_names, traintest_parts, 'acc', 15
 
 
 def get_olympicsports_dataset(parent_path):
@@ -246,31 +248,31 @@ def get_olympicsports_dataset(parent_path):
     fullvideonames = []
     videonames = []
     int_inds = []
-    traintest_parts = []
-    for i, part in enumerate(['train', 'test']):
+    part = []
+    for i, name in enumerate(['train/','test/']):
         c = 0
         for action in action_names:
-            with open(join(parent_path, 'train_test_split', part, action.replace('_',' ')+'.txt'), 'r') as f:
+            with open(join(parent_path, 'train_test_split/', name, action.replace('_',' ') + '.txt'), 'r') as f:
                 k = 1
                 line = f.readline().rstrip()
-                fullvideonames.append(join(parent_path, action, line+'.mp4'))
+                fullvideonames.append(join(parent_path, action, line + '.mp4'))
                 videonames.append(line)
-                traintest_parts.append(i)
+                part.append(i)
                 while 1:
                     line = f.readline().rstrip()
                     if line != '':
                         fullvideonames.append(join(parent_path, action, line + '.mp4'))
                         videonames.append(line)
-                        traintest_parts.append(i)
+                        part.append(i)
                         k += 1
                     else:
                         break
                 int_inds += [c] * k
             c += 1
 
-
     class_labels = (-1) * np.ones((len(int_inds),len(action_names))).astype('int32')
     for i in xrange(len(action_names)):
         class_labels[np.array(int_inds)==i,i] = 1
 
-    return fullvideonames, videonames, class_labels, action_names, [traintest_parts], 'acc'
+    traintest_parts = [part]
+    return fullvideonames, videonames, class_labels, action_names, traintest_parts, 'map', 5
