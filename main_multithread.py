@@ -164,25 +164,25 @@ if __name__ == "__main__":
         classification.print_results(results, opt_criterion=opt_criterion)
 
     # # Darwin-tree descriptor computation and classification
-    if 'acp-vd' in args.methods:
-        tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=True, nt=args.nt)
-        tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
-                                                                   feats_path + '/vdtree/', \
-                                                                   treelike=True, pca_reduction=True, clusters_path=clusters_path, nt=args.nt, verbose=args.verbose)
-
-        acp_vd = kernels.compute_ACP_kernels(feats_path + '/vdtree/', videonames, traintest_parts, xml_config['features_list'], \
-                                               kernels_path + '/acp-vd/', kernel_type='hellinger', use_disk=False, nt=args.nt, verbose=args.verbose)
-
-        params = [[[1]], [1], np.linspace(0,1,11), desc_weights_gbl]
-        results = classification.classify(acp_vd, \
-                                          class_labels, traintest_parts, params, \
-                                          xml_config['features_list'], \
-                                          C=C_gbl,
-                                          strategy='kernel_fusion',
-                                          opt_criterion=opt_criterion,
-                                          verbose=args.verbose)
-        print 'acp-vd'
-        classification.print_results(results, opt_criterion=opt_criterion)
+    # if 'acp-vd' in args.methods:
+    #     tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=True, nt=args.nt)
+    #     tracklet_representation.compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, xml_config['features_list'], \
+    #                                                                feats_path + '/vdtree/', \
+    #                                                                treelike=True, pca_reduction=True, clusters_path=clusters_path, nt=args.nt, verbose=args.verbose)
+    #
+    #     acp_vd = kernels.compute_ACP_kernels(feats_path + '/vdtree/', videonames, traintest_parts, xml_config['features_list'], \
+    #                                            kernels_path + '/acp-vd/', kernel_type='hellinger', use_disk=False, nt=args.nt, verbose=args.verbose)
+    #
+    #     params = [[[1]], [1], np.linspace(0,1,11), desc_weights_gbl]
+    #     results = classification.classify(acp_vd, \
+    #                                       class_labels, traintest_parts, params, \
+    #                                       xml_config['features_list'], \
+    #                                       C=C_gbl,
+    #                                       strategy='kernel_fusion',
+    #                                       opt_criterion=opt_criterion,
+    #                                       verbose=args.verbose)
+    #     print 'acp-vd'
+    #     classification.print_results(results, opt_criterion=opt_criterion)
 
     if 'atnbep' in args.methods:
         tracklet_representation.train_fv_gmms(tracklets_path, videonames, traintest_parts, xml_config['features_list'], intermediates_path, pca_reduction=True, nt=args.nt, verbose=args.verbose)
