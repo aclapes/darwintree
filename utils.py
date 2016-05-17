@@ -217,3 +217,27 @@ def uniform_weights_dist(n_weights, step=0.1):
             stack.append((ww,pos+1,acc_weight+x))
 
     return D
+
+def posneg(X, axis=0, copy=True):
+    # get the negative part
+    X_neg = np.zeros_like(X)
+    X_neg[X < 0] = -X[X < 0]
+    # get the positive part
+    X_pos = None
+    if not copy:
+        X[X < 0] = 0
+        X_pos = X
+    else:
+        X_pos = X.copy()
+        X_pos[X < 0] = 0
+
+    return np.concatenate([X_pos,X_neg], axis=(0 if axis == 1 else 1))
+
+def rootSIFT(X):
+    '''
+    :param X: rootSIFT operation applied to elements of X (element-wise).
+    Check Fisher Vectors literature.
+    :return:
+    '''
+    return np.multiply(np.sign(X), np.sqrt(np.abs(X)))
+

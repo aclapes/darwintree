@@ -32,17 +32,7 @@ INTERNAL_PARAMETERS = dict(
     )
 )
 
-
-def extract(fullvideonames, videonames, feat_types, tracklets_path, verbose=False):
-    _extract(fullvideonames, videonames, np.arange(len(videonames)), feat_types, traj_length, tracklets_path, verbose=verbose)
-
-
-def extract_multiprocess(fullvideonames, videonames, st, num_videos, feat_types, tracklets_path, verbose=False):
-    inds = np.linspace(st, st+num_videos-1, num_videos)
-    _extract(fullvideonames, videonames, inds, feat_types, traj_length, tracklets_path, verbose=verbose)
-
-
-def extract_multithread(fullvideonames, videonames, feat_types, traj_length, tracklets_path, nt=4, verbose=False):
+def extract(fullvideonames, videonames, feat_types, traj_length, tracklets_path, nt=4, verbose=False):
     inds = np.random.permutation(len(videonames)).astype('int')
     # inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
     # step = np.int(np.floor(len(inds)/nt)+1)
@@ -115,16 +105,7 @@ def _extract(fullvideonames, videonames, indices, feat_types, traj_length, track
             continue
 
         # filter low density tracklets
-        with warnings.catch_warnings():
-            warnings.filterwarnings('error')
-            try:
-                inliers = filter_low_density(data)
-                if len(inliers) == 0:
-                    raise RuntimeWarning
-            except RuntimeWarning:
-                sys.stderr.write('[_extract] Runtime warning in: %s\n' % (videonames[i]))
-                sys.stderr.flush()
-                continue
+        inliers = filter_low_density(data)
 
         # store feature types separately
         for feat_t in feats_beginend.keys():
@@ -181,7 +162,7 @@ def filter_low_density(data, k=30, r=5):
 
     all_sparsities = np.zeros((P.shape[0],k), dtype=np.float32)
     subset_indices = []  # optimization. see (*) below
-    for i in range(0, 20):  # TODO: change 20 back to "P.shape[0]"
+    for i in range(0, P.shape[0]):
         new_subset_indices = np.where((data[:,0] >= data[i,0] - r) & (data[:,0] <= data[i,0] + r))[0]
         if len(new_subset_indices) == 1:
             all_sparsities[i,:] = np.nan
@@ -203,7 +184,12 @@ def filter_low_density(data, k=30, r=5):
     local_sparsities = np.nanmean(all_sparsities, axis=1)
     mean_sparsity = np.nanmean(all_sparsities)
     stddev_sparsity = np.nanstd(all_sparsities)
-    inliers = np.where(local_sparsities <= (mean_sparsity + stddev_sparsity))[0]
 
+    f = 1.0
+    while f <= 3.0:
+        inliers = np.where(local_sparsities <= (mean_sparsity + f * stddev_sparsity))[0]
+        if len(inliers) > 0: # all ok
+            return inliers
+        f += 1.0
 
-    return inliers
+    return np.where(~np.isnan(local_sparsities))[0]

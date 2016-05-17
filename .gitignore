@@ -1,3 +1,5 @@
+*.mat
+*.pkl
 config.xml
 
 .DS_Store

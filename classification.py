@@ -92,10 +92,10 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
 
             for feat_t in kernels_tr.keys():
                 if isinstance(kernels_tr[feat_t]['root'], tuple):
-                    kernels_tr[feat_t]['root'] = utils.normalize(kernels_tr[feat_t]['root'][0])
+                    kernels_tr[feat_t]['root'] = kernels_tr[feat_t]['root'][0]  # utils.normalize(kernels_tr[feat_t]['root'][0])
                     x = kernels_tr[feat_t]['nodes']
-                    kernels_tr[feat_t]['nodes'] = utils.normalize(a_i[1]*x[0]+(1-a_i[1])*x[1] if len(x)==2 else x[0])
-
+                    kernels_tr[feat_t]['nodes'] = a_i[1]*x[0]+(1-a_i[1])*x[1] if len(x)==2 else x[0] # utils.normalize(a_i[1]*x[0]+(1-a_i[1])*x[1] if len(x)==2 else x[0])
+                    # np.fill_diagonal(kernels_tr[feat_t]['nodes'],1)
                     kernels_tr[feat_t] = a_i[2]*np.array(kernels_tr[feat_t]['root']) + (1-a_i[2])*np.array(kernels_tr[feat_t]['nodes'])
 
                 else:
@@ -175,12 +175,18 @@ def kernel_fusion_classification(input_kernels_tr, input_kernels_te, a, feat_typ
 
         for feat_t in kernels_tr.keys():
             if isinstance(kernels_tr[feat_t]['root'], tuple):
-                kernels_tr[feat_t]['root'], pr = utils.normalization(kernels_tr[feat_t]['root'][0])
-                kernels_te[feat_t]['root']     = pr * kernels_te[feat_t]['root'][0]
+                # kernels_tr[feat_t]['root'], pr = utils.normalization(kernels_tr[feat_t]['root'][0])
+                # kernels_te[feat_t]['root']     = pr * kernels_te[feat_t]['root'][0]
+                kernels_tr[feat_t]['root'] = kernels_tr[feat_t]['root'][0]
+                kernels_te[feat_t]['root'] = kernels_te[feat_t]['root'][0]
 
                 xn_tr, xn_te = kernels_tr[feat_t]['nodes'], kernels_te[feat_t]['nodes']
-                kernels_tr[feat_t]['nodes'], pn = utils.normalization(a_best[1]*xn_tr[0]+(1-a_best[1])*xn_tr[1] if len(xn_tr)==2 else xn_tr[0])
-                kernels_te[feat_t]['nodes']     = pn * (a_best[1]*xn_te[0]+(1-a_best[1])*xn_te[1] if len(xn_te)==2 else xn_te[0])
+                # kernels_tr[feat_t]['nodes'], pn = utils.normalization(a_best[1]*xn_tr[0]+(1-a_best[1])*xn_tr[1] if len(xn_tr)==2 else xn_tr[0])
+                # kernels_te[feat_t]['nodes']     = pn * (a_best[1]*xn_te[0]+(1-a_best[1])*xn_te[1] if len(xn_te)==2 else xn_te[0])
+                kernels_tr[feat_t]['nodes'] = a_best[1]*xn_tr[0]+(1-a_best[1])*xn_tr[1] if len(xn_tr)==2 else xn_tr[0]
+                np.fill_diagonal(kernels_tr[feat_t]['nodes'],1)
+                kernels_te[feat_t]['nodes'] = a_best[1]*xn_te[0]+(1-a_best[1])*xn_te[1] if len(xn_te)==2 else xn_te[0]
+                np.fill_diagonal(kernels_te[feat_t]['nodes'],1)
 
                 kernels_tr[feat_t] = a_best[2]*kernels_tr[feat_t]['root'] + (1-a_best[2])*kernels_tr[feat_t]['nodes']
                 kernels_te[feat_t] = a_best[2]*kernels_te[feat_t]['root'] + (1-a_best[2])*kernels_te[feat_t]['nodes']

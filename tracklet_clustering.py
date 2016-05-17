@@ -23,17 +23,8 @@ INTERNAL_PARAMETERS = dict(
     tries_per_ridge_value = 3
 )
 
-def cluster(tracklets_path, videonames, clusters_path, verbose=False, visualize=False):
-    inds = np.linspace(0, len(videonames)-1, len(videonames))
-    _cluster(tracklets_path, videonames, inds, tracklets_path, verbose=verbose, visualize=visualize)
 
-
-def cluster_multiprocess(tracklets_path, videonames, st, num_videos, clusters_path, verbose=False):
-    inds = np.linspace(st, st+num_videos-1, num_videos)
-    _cluster(tracklets_path, videonames, inds, tracklets_path, verbose=verbose, visualize=False)
-
-
-def cluster_multithread(tracklets_path, videonames, clusters_path, nt=4, verbose=False):
+def cluster(tracklets_path, videonames, clusters_path, nt=4, verbose=False):
     inds = np.random.permutation(len(videonames)).astype('int')
     # inds = np.linspace(0,len(videonames)-1,len(videonames)).astype('int')
     # step = np.int(np.floor(len(inds)/nt)+1)

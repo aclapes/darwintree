@@ -11,12 +11,13 @@ from joblib import delayed, Parallel
 from random import shuffle
 import time
 from sklearn import preprocessing
+from utils import posneg, rootSIFT
 
 import videodarwin
-from tracklet_representation import normalize, rootSIFT
+from tracklet_representation import normalize
 
 def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, kernels_output_path, \
-                         kernel_type='hellinger', norm='l2', power_norm=True, \
+                         kernel_type='linear', norm='l2', power_norm=True, \
                          nt=4, use_disk=False, verbose=False):
     """
     Compute All Tree Node Branch Evolution Pairs.
@@ -75,7 +76,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                                 sys.stderr.flush()
                                 quit()
 
-                            root, nodes = _construct_edge_pairs(d, norm=norm, power_norm=power_norm)
+                            root, nodes = _construct_edge_pairs(d, norm=norm, feat_map='rootSIFT')
                             D_train.setdefault('root',[]).append(root)
                             D_train.setdefault('nodes',[]).append(nodes)
 
@@ -121,7 +122,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                                     sys.stderr.flush()
                                     quit()
 
-                                root, nodes = _construct_edge_pairs(d, norm=norm, power_norm=power_norm)
+                                root, nodes = _construct_edge_pairs(d, norm=norm, feat_map='rootSIFT')
                                 D_train.setdefault('root',[]).append(root)
                                 D_train.setdefault('nodes',[]).append(nodes)
 
@@ -137,7 +138,7 @@ def compute_ATEP_kernels(feats_path, videonames, traintest_parts, feat_types, ke
                                 sys.stderr.flush()
                                 quit()
 
-                            root, nodes = _construct_edge_pairs(d, norm=norm, power_norm=power_norm)
+                            root, nodes = _construct_edge_pairs(d, norm=norm, feat_map='rootSIFT')
                             D_test.setdefault('root',[]).append(root)
                             D_test.setdefault('nodes',[]).append(nodes)
 
@@ -642,16 +643,20 @@ def construct_edge_pairs(feat_repr_filepath, output_filepath, norm='l2', power_n
             quit()
 
 
-def _construct_edge_pairs(data, norm='l2', power_norm=True, dtype=np.float32):
+def _construct_edge_pairs(data, norm='l2', feat_map='rootSIFT', dtype=np.float32):
     """
     A tree is a list of edges, with each edge as the concatenation of the repr. of parent and child nodes.
     :param data:
     :return root, edges:
     """
 
+    feat_map = str.lower(feat_map)  # error handling on arg passing: careful with capslock
+
     r = data['tree'][1].astype(dtype=dtype)
-    if power_norm:
+    if feat_map == 'rootsift':
         r = np.sign(r) * np.sqrt(np.abs(r))
+    elif feat_map == 'posneg':
+        r = np.sqrt(posneg(r, axis=1))
     r = preprocessing.normalize(r[np.newaxis,:], norm=norm)
     root = [np.squeeze(r), ]
 
@@ -660,10 +665,13 @@ def _construct_edge_pairs(data, norm='l2', power_norm=True, dtype=np.float32):
         if id > 1:
             x_left = data['tree'][id].astype('float32')
             x_right = data['tree'][int(id/2.)].astype('float32')
-
             e = np.concatenate([x_left,x_right])
-            if power_norm:
+
+            if feat_map == 'rootsift':
                 e = np.sign(e) * np.sqrt(np.abs(e))
+            elif feat_map == 'posneg':
+                e = np.sqrt(posneg(e, axis=1))
+
             e = preprocessing.normalize(e[np.newaxis,:], norm=norm)
 
             edges.append([np.squeeze(e),])

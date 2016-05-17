@@ -29,57 +29,21 @@ INTERNAL_PARAMETERS = dict(
     fv_repr_feats = ['mu','sigma']
 )
 
-
 def compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                             pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
-    _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
-                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
-
-def compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                           pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
-    _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
-                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
-
-def compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
-                           pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
-    _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, np.arange(len(videonames)), feat_types, feats_path, \
-                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
-
-
-def compute_bovw_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
-                                          pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
-    inds = np.linspace(st, st+num_videos-1, num_videos)
-    _compute_bovw_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
-                              pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
-
-def compute_fv_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
-                                        pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
-    inds = np.linspace(st, st+num_videos-1, num_videos)
-    _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
-                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
-
-def compute_vd_descriptors_multiprocess(tracklets_path, intermediates_path, videonames, traintest_parts, st, num_videos, feat_types, feats_path, \
-                                        pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
-    inds = np.linspace(st, st+num_videos-1, num_videos)
-    _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, inds, feat_types, feats_path, \
-                            pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
-
-
-def compute_bovw_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
                                          nt=4, pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     Parallel(n_jobs=nt, backend='threading')(delayed(_compute_bovw_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
                                                                                 [i], feat_types, feats_path, \
                                                                                 pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
                                                            for i in xrange(len(videonames)))
 
-def compute_fv_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
+def compute_fv_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
                                        nt=4, pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     Parallel(n_jobs=nt, backend='threading')(delayed(_compute_fv_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
                                                                               [i], feat_types, feats_path, \
                                                                               pca_reduction=pca_reduction, treelike=treelike, clusters_path=clusters_path, verbose=verbose)
                                                            for i in xrange(len(videonames)))
 
-def compute_vd_descriptors_multithread(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
+def compute_vd_descriptors(tracklets_path, intermediates_path, videonames, traintest_parts, feat_types, feats_path, \
                                        nt=4, pca_reduction=False, treelike=True, clusters_path=None, verbose=False):
     Parallel(n_jobs=nt, backend='threading')(delayed(_compute_vd_descriptors)(tracklets_path, intermediates_path, videonames, traintest_parts, \
                                                                               [i], feat_types, feats_path, \
@@ -240,7 +204,8 @@ def _compute_fv_descriptors(tracklets_path, intermediates_path, videonames, trai
                 else:
                     d = preprocessing.normalize(d, norm='l1', axis=1)
 
-                d = rootSIFT(d)
+                if feat_t != 'trj':
+                    d = rootSIFT(d)
 
                 if pca_reduction:
                     d = cache[feat_t]['pca'].transform(d)  # reduce dimensionality
@@ -361,22 +326,33 @@ def _compute_vd_descriptors(tracklets_path, intermediates_path, videonames, trai
                 else:  # or separately the FVs of the tree nodes
                     vdtree = dict()
                     if len(clusters['tree']) == 1:
-                        fids = np.unique(obj[:,0])
-                        V = [ynumpy.fisher(cache[feat_t]['gmm'], d[np.where(obj[:,0] == f)[0],:], INTERNAL_PARAMETERS['fv_repr_feats'])
-                             for f in fids]
-                        vdtree[1] = videodarwin.darwin(np.array(V))
+                        fids = np.unique(obj[:,0]).astype('int')
+                        U = None
+                        for f,fid in enumerate(range(fids[0], fids[-1]+1)):
+                            aux_inds = np.where(obj[:,0] == fid)[0]
+                            if len(aux_inds) == 0:
+                                continue
+                            fv = ynumpy.fisher(cache[feat_t]['gmm'], d[aux_inds,:], INTERNAL_PARAMETERS['fv_repr_feats'])
+                            if U is None:
+                                U = np.zeros((fids[-1]-fids[0]+1, len(fv)), dtype=np.float32)
+                            U[f] = fv
+                        vdtree[1] = (videodarwin.darwin(U)).astype('float32')
                     else:
                         T = reconstruct_tree_from_leafs(np.unique(clusters['int_paths']))
                         for parent_idx, children_inds in T.iteritems():
                             # (in a per-frame representation)
                             node_inds = np.where(np.any([clusters['int_paths'] == idx for idx in children_inds], axis=0))[0]
-                            fids = np.unique(obj[node_inds,0])
-                            V = []
-                            for f in fids:
-                                tmp = d[np.where(obj[node_inds,0] == f)[0],:]
-                                fv = ynumpy.fisher(cache[feat_t]['gmm'], tmp, INTERNAL_PARAMETERS['fv_repr_feats'])
-                                V.append(fv)  # no normalization or nothing (it's done when computing darwin)
-                            vdtree[parent_idx] = videodarwin.darwin(np.array(V))
+                            fids = np.unique(obj[node_inds,0]).astype('int')
+                            U = None
+                            for f,fid in enumerate(range(fids[0], fids[-1]+1)):
+                                aux_inds = np.where(obj[node_inds,0] == fid)[0]
+                                if len(aux_inds) == 0:
+                                    continue
+                                fv = ynumpy.fisher(cache[feat_t]['gmm'], d[aux_inds,:], INTERNAL_PARAMETERS['fv_repr_feats'])
+                                if U is None:
+                                    U = np.zeros((fids[-1]-fids[0]+1, len(fv)), dtype=np.float32)
+                                U[f] = fv  # no normalization or nothing (it's done when computing darwin)
+                            vdtree[parent_idx] = (videodarwin.darwin(U)).astype('float32')
 
                     with open(output_filepath, 'wb') as f:
                         cPickle.dump(dict(tree=vdtree), f)
